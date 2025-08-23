@@ -34,7 +34,8 @@ services:
   server:
     container_name: server
     image: server:latest
-    entrypoint: python3 /main.py
+    volumes:
+      - ./server/config.ini:/app/config.ini
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
@@ -49,7 +50,8 @@ for i in $(seq 1 $NUM_CLIENTS); do
   client$i:
     container_name: client$i
     image: client:latest
-    entrypoint: /client
+    volumes:
+      - ./client/config.yaml:/app/config.yaml
     environment:
       - CLI_ID=$i
       - CLI_LOG_LEVEL=DEBUG
@@ -73,3 +75,4 @@ EOF
 
 echo "Docker Compose file generated successfully: $OUTPUT_FILE"
 echo "The file contains 1 server and $NUM_CLIENTS client(s)"
+echo "Configuration files are mounted as volumes"
