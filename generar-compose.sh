@@ -35,7 +35,7 @@ services:
     container_name: server
     image: server:latest
     volumes:
-      - ./server/config.ini:/app/config.ini
+      - ./server/config.ini:/config.ini
     environment:
       - PYTHONUNBUFFERED=1
       - LOGGING_LEVEL=DEBUG
@@ -51,7 +51,7 @@ for i in $(seq 1 $NUM_CLIENTS); do
     container_name: client$i
     image: client:latest
     volumes:
-      - ./client/config.yaml:/app/config.yaml
+      - ./client/config.yaml:/config.yaml
     environment:
       - CLI_ID=$i
       - CLI_LOG_LEVEL=DEBUG
