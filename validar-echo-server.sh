@@ -8,30 +8,39 @@ TEST_MESSAGE="Hello Echo Server Test 123"
 
 # Function to run the test
 test_echo_server() {
-    # We have to create a temporary container since the client container is setup to
-    # run and once the connection has been established and the communication has ended,
-    # the process ends.
-    RESPONSE=$(
-        docker run --rm \
-            --network tp0_testing_net \
-            alpine \
-            sh -c "
-                # Install netcat (suppress output)
-                apk add --no-cache netcat-openbsd > /dev/null 2>&1 && \
-                
-                # Send test message and capture response
-                echo '$TEST_MESSAGE' | nc server 12345
-            "
-    )
+    # echo "=== Starting Echo Server Test ==="
     
-    # Check if the response matches the sent message
+    # Step 1: Create container
+    # We use tail -f /dev/null to keep the container running.
+    # echo "1. Creating Alpine container..."
+    CONTAINER_ID=$(docker run -d \
+        --network tp0_testing_net \
+        alpine \
+        sh -c "tail -f /dev/null")
+    
+    # Step 2: Install netcat
+    # echo "2. Installing netcat..."
+    docker exec "$CONTAINER_ID" sh -c "apk add --no-cache netcat-openbsd > /dev/null 2>&1"
+    
+    # Step 3: Test connection
+    # echo "3. Testing server connection..."
+    RESPONSE=$(docker exec "$CONTAINER_ID" sh -c "echo '$TEST_MESSAGE' | nc server 12345")
+    
+    # Step 4: Clean up
+    # echo "4. Cleaning up..."
+    docker stop "$CONTAINER_ID" > /dev/null 2>&1 # Suppress output
+    docker rm "$CONTAINER_ID" > /dev/null 2>&1 # Suppress output
+    
+    # Step 5: Validate response
+    # echo "5. Validating response..."
     if [ "$RESPONSE" = "$TEST_MESSAGE" ]; then
         echo "action: test_echo_server | result: success"
         return 0
     else
+        #echo "Test FAILED"
+        #echo "Expected: '$TEST_MESSAGE'"
+        #echo "Received: '$RESPONSE'"
         echo "action: test_echo_server | result: fail"
-        echo "Expected: '$TEST_MESSAGE'"
-        echo "Received: '$RESPONSE'"
         return 1
     fi
 }
