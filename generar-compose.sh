@@ -53,6 +53,11 @@ for i in $(seq 1 $NUM_CLIENTS); do
       - ./client/config.yaml:/config.yaml
     environment:
       - CLI_ID=$i
+      - CLI_BET_NOMBRE=Santiago Lionel
+      - CLI_BET_APELLIDO=Lorca
+      - CLI_BET_DOCUMENTO=30904465
+      - CLI_BET_NACIMIENTO=1999-03-17
+      - CLI_BET_NUMERO=$i
     networks:
       - testing_net
     depends_on:

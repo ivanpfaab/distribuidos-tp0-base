@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
 
 	"github.com/op/go-logging"
 )
@@ -20,6 +21,7 @@ type ClientConfig struct {
 	ServerAddress string
 	LoopAmount    int
 	LoopPeriod    time.Duration
+	Bet           *domain.Bet
 }
 
 // Client Entity that encapsulates how
@@ -101,12 +103,15 @@ func (c *Client) StartClientLoop() {
 			continue
 		}
 
+		message := c.config.Bet.String()
+
 		// TODO: Modify the send to avoid short-write
 		fmt.Fprintf(
 			c.conn,
-			"[CLIENT %v] Message N°%v\n",
+			"[CLIENT %v] Message N°%v: %s\n",
 			c.config.ID,
 			msgID,
+			message,
 		)
 		msg, err := bufio.NewReader(c.conn).ReadString('\n')
 		c.conn.Close()

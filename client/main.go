@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
+
 	"github.com/op/go-logging"
 	"github.com/pkg/errors"
 	"github.com/spf13/viper"
@@ -37,6 +39,13 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("loop", "period")
 	v.BindEnv("loop", "amount")
 	v.BindEnv("log", "level")
+	
+	// Add bet environment variables
+	v.BindEnv("bet", "nombre")
+	v.BindEnv("bet", "apellido")
+	v.BindEnv("bet", "documento")
+	v.BindEnv("bet", "nacimiento")
+	v.BindEnv("bet", "numero")
 
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
@@ -90,6 +99,24 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
+// createBetFromConfig creates a bet object from the configuration
+func createBetFromConfig(v *viper.Viper) (*domain.Bet, error) {
+	nombre := v.GetString("bet.nombre")
+	apellido := v.GetString("bet.apellido")
+	documento := v.GetString("bet.documento")
+	nacimiento := v.GetString("bet.nacimiento")
+	numero := v.GetUint("bet.numero")
+
+	//TODO: Add validation for bets
+
+	bet, err := domain.NewBet(nombre, apellido, documento, nacimiento, numero)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bet: %w", err)
+	}
+
+	return bet, nil
+}
+
 func main() {
 	v, err := InitConfig()
 	if err != nil {
@@ -103,11 +130,21 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
+	// Create bet from configuration
+	bet, err := createBetFromConfig(v)
+	if err != nil {
+		log.Criticalf("Failed to create bet from configuration: %s", err)
+	}
+
+	// Log bet information
+	log.Infof("action: bet_created | result: success | dni: %s | numero: %d", bet.Documento, bet.Numero)
+
 	clientConfig := common.ClientConfig{
 		ServerAddress: v.GetString("server.address"),
 		ID:            v.GetString("id"),
 		LoopAmount:    v.GetInt("loop.amount"),
 		LoopPeriod:    v.GetDuration("loop.period"),
+		Bet:           bet, // Send the bet to the client
 	}
 
 	client := common.NewClient(clientConfig)

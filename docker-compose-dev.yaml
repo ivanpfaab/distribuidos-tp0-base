@@ -17,6 +17,11 @@ services:
       - ./client/config.yaml:/config.yaml
     environment:
       - CLI_ID=1
+      - CLI_BET_NOMBRE=Santiago Lionel
+      - CLI_BET_APELLIDO=Lorca
+      - CLI_BET_DOCUMENTO=30904465
+      - CLI_BET_NACIMIENTO=1999-03-17
+      - CLI_BET_NUMERO=7574
     networks:
       - testing_net
     depends_on:
