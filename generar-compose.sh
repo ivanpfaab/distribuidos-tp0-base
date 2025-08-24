@@ -19,8 +19,8 @@ if ! [[ "$NUM_CLIENTS" =~ ^[0-9]+$ ]]; then
 fi
 
 # The number of clients needs to be a number higher than 0
-if ! (("$NUM_CLIENTS" > 0 )); then
-    echo "Error: Number of clients needs to be a number higher than 0"
+if  (("$NUM_CLIENTS" < 0 )); then
+    echo "Error: Number of clients needs to be a positive number"
     exit 1
 fi
 
