@@ -15,10 +15,7 @@ test_echo_server() {
         docker run --rm \
             --network tp0_testing_net \
             alpine \
-            sh -c "
-                # Install netcat (suppress output)
-                apk add --no-cache netcat-openbsd > /dev/null 2>&1 && \
-                
+            sh -c "                
                 # Send test message and capture response
                 echo '$TEST_MESSAGE' | nc server 12345
             "
