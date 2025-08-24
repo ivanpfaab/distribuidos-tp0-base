@@ -4,6 +4,10 @@ import os
 import signal
 import sys
 
+from protocol.message import BetMessage
+from protocol.communication import CommunicationHandler
+from common.utils import store_bets
+
 
 class Server:
     def __init__(self, port, listen_backlog):
@@ -83,20 +87,31 @@ class Server:
 
     def __handle_client_connection(self, client_sock):
         """
-        Read message from a specific client socket and closes the socket
-
-        If a problem arises in the communication with the client, the
-        client socket will also be closed
+        Handle client connection using the bet protocol
         """
         try:
-            # TODO: Modify the receive to avoid short-reads
-            msg = client_sock.recv(1024).rstrip().decode('utf-8')
-            addr = client_sock.getpeername()
-            logging.info(f'action: receive_message | result: success | ip: {addr[0]} | msg: {msg}')
-            # TODO: Modify the send to avoid short-writes
-            client_sock.send("{}\n".format(msg).encode('utf-8'))
-        except OSError as e:
-            logging.error("action: receive_message | result: fail | error: {e}")
+            # Create communication handler
+            communication_handler = CommunicationHandler(client_sock)
+            
+            # Receive message from client
+            message_str = communication_handler.receive_message()
+
+            # Parse the bet message
+            bet = BetMessage.bet_from_string(message_str)
+            
+            # Store the bet using the store_bets function
+            store_bets([bet])
+            
+            # Log successful bet storage
+            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
+            
+            # Send success response to client (using bet number as ACK)
+            communication_handler.send_response(str(bet.number))
+            
+        except Exception as e:
+            addr = client_sock.getpeername() if client_sock else "unknown"
+            logging.error(f"action: handle_client | result: fail | ip: {addr} | error: {e}")
+            
         finally:
             client_sock.close()
 

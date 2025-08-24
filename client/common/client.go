@@ -45,12 +45,8 @@ func NewClient(config ClientConfig) *Client {
 	signals := make(chan os.Signal, 1) //The 1 is the buffer size
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM) //Notify the client when the signals are received
 
-	println("Client initialized")
-
 	go func() {
-		println("Waiting for signal")
 		<-signals //Wait for the signal to be received
-		println("Signal received, closing connection")
 		client.running = false
 		if client.conn != nil {
 			client.conn.Close()
@@ -86,12 +82,12 @@ func (c *Client) submitBet(bet *domain.Bet) error {
 
 	// Create bet message in the required format: <msg length><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
 	betMsg := protocol.NewBetMessage(
-		c.config.ID, // agency ID is the client ID
+		bet.AgencyID,
 		bet.Nombre,
 		bet.Apellido,
 		bet.Documento,
 		bet.Nacimiento,
-		bet.Numero,
+		bet.Numero, 
 	)
 
 	// Send bet message

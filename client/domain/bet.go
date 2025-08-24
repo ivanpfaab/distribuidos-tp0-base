@@ -5,6 +5,7 @@ import (
 )
 
 type Bet struct {
+	AgencyID   int
 	Nombre     string
 	Apellido   string
 	Documento  string
@@ -13,10 +14,11 @@ type Bet struct {
 }
 
 // NewBet creates a new bet with validation
-func NewBet(nombre, apellido, documento, nacimiento string, numero uint) (*Bet, error) {
+func NewBet(agencyID int, nombre string, apellido string, documento string, nacimiento string, numero uint) (*Bet, error) {
 	//TODO: Add validations
 	
 	return &Bet{
+		AgencyID:   agencyID,
 		Nombre:     nombre,
 		Apellido:   apellido,
 		Documento:  documento,
@@ -27,6 +29,6 @@ func NewBet(nombre, apellido, documento, nacimiento string, numero uint) (*Bet, 
 
 // String representation of the bet
 func (b *Bet) String() string {
-	return fmt.Sprintf("Bet{DNI: %s, Number: %d, Name: %s %s, Birth: %s}", 
-		b.Documento, b.Numero, b.Nombre, b.Apellido, b.Nacimiento)
+	return fmt.Sprintf("Bet{AgencyID: %d, DNI: %s, Number: %d, Name: %s %s, Birth: %s}", 
+		b.AgencyID, b.Documento, b.Numero, b.Nombre, b.Apellido, b.Nacimiento)
 }

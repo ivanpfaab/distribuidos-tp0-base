@@ -7,7 +7,7 @@ import (
 // BetMessage represents a bet submission in simple string format
 type BetMessage struct {
 	MsgLength  uint8
-	AgencyID   string
+	AgencyID   int
 	Nombre     string
 	Apellido   string
 	Documento  string
@@ -16,7 +16,7 @@ type BetMessage struct {
 }
 
 // NewBetMessage creates a new bet message
-func NewBetMessage(agencyID, nombre, apellido, documento, nacimiento string, numero uint) *BetMessage {
+func NewBetMessage(agencyID int, nombre, apellido, documento, nacimiento string, numero uint) *BetMessage {
 	msg := &BetMessage{
 		AgencyID:   agencyID,
 		Nombre:     nombre,
@@ -33,7 +33,7 @@ func NewBetMessage(agencyID, nombre, apellido, documento, nacimiento string, num
 
 // String converts the bet message to the required format
 func (b *BetMessage) String() string {
-	return fmt.Sprintf("%s|%s|%s|%s|%s|%d", 
+	return fmt.Sprintf("%d|%s|%s|%s|%s|%d", 
 		b.AgencyID, 
 		b.Nombre, 
 		b.Apellido, 
@@ -44,10 +44,14 @@ func (b *BetMessage) String() string {
 
 // ParseResponse parses a simple response from the server
 func ParseResponse(response string) (bool, error) {
-	//TODO: when working with the server, change the logic to check if the bet was accepted or not
 	if len(response) == 0 {
 		return false, fmt.Errorf("empty response from server")
-	} else {
+	}
+	
+	// Check if response is a number (bet number as ACK)
+	if _, err := fmt.Sscanf(response, "%d", new(int)); err == nil {
 		return true, nil
+	} else {
+		return false, fmt.Errorf("server response: %s", response)
 	}
 }
