@@ -38,7 +38,6 @@ services:
       - ./server/config.ini:/config.ini
     environment:
       - PYTHONUNBUFFERED=1
-      - LOGGING_LEVEL=DEBUG
     networks:
       - testing_net
 EOF
@@ -54,7 +53,6 @@ for i in $(seq 1 $NUM_CLIENTS); do
       - ./client/config.yaml:/config.yaml
     environment:
       - CLI_ID=$i
-      - CLI_LOG_LEVEL=DEBUG
     networks:
       - testing_net
     depends_on:
