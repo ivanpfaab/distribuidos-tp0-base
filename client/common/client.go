@@ -1,16 +1,17 @@
 package common
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 	"time"
 	"os"
 	"os/signal"
 	"syscall"
-	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
+
 
 	"github.com/op/go-logging"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
+	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/protocol"
 )
 
 var log = logging.MustGetLogger("log")
@@ -77,6 +78,49 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
+// submitBet submits a bet to the server using the simple string protocol
+func (c *Client) submitBet(bet *domain.Bet) error {
+	// Create communication handler
+	commHandler := protocol.NewCommunicationHandler(c.conn)
+	defer commHandler.Close()
+
+	// Create bet message in the required format: <msg length><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
+	betMsg := protocol.NewBetMessage(
+		c.config.ID, // agency ID is the client ID
+		bet.Nombre,
+		bet.Apellido,
+		bet.Documento,
+		bet.Nacimiento,
+		bet.Numero,
+	)
+
+	// Send bet message
+	if err := commHandler.SendMessage(betMsg.String()); err != nil {
+		return fmt.Errorf("failed to send bet message: %w", err)
+	}
+
+	// Receive response
+	response, err := commHandler.ReceiveMessage()
+	if err != nil {
+		return fmt.Errorf("failed to receive response: %w", err)
+	}
+
+	// Parse response
+	success, err := protocol.ParseResponse(response)
+	if err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if success {
+		log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %d", 
+			bet.Documento, bet.Numero)
+	} else {
+		return fmt.Errorf("bet submission failed: %s", response)
+	}
+
+	return nil
+}
+
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
 	// There is an autoincremental msgID to identify every message sent
@@ -103,42 +147,18 @@ func (c *Client) StartClientLoop() {
 			continue
 		}
 
-		message := c.config.Bet.String()
-
-		// TODO: Modify the send to avoid short-write
-		fmt.Fprintf(
-			c.conn,
-			"[CLIENT %v] Message N°%v: %s\n",
-			c.config.ID,
-			msgID,
-			message,
-		)
-		msg, err := bufio.NewReader(c.conn).ReadString('\n')
-		c.conn.Close()
-		c.conn = nil // Reset connection after use
-
-		if err != nil {
-			log.Errorf("action: receive_message | result: fail | client_id: %v | error: %v",
-				c.config.ID,
-				err,
-			)
-			continue // Continue to next message instead of returning
-		}
-		
-		if msg == message {
-			log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
-				c.config.Bet.Documento,
-				c.config.Bet.Numero,
-			)
-		} else {
-			log.Infof("message sent: %v\n", msg)
-			log.Infof("message received: %v\n", message)
-			log.Errorf("action: apuesta_enviada | result: fail | dni: %v | numero: %v",
-				c.config.Bet.Documento,
-				c.config.Bet.Numero,
-			)
+		// Submit bet using the simple protocol
+		if err := c.submitBet(c.config.Bet); err != nil {
+			log.Errorf("action: submit_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			c.conn.Close()
+			c.conn = nil
+			time.Sleep(c.config.LoopPeriod)
 			continue
 		}
+
+		// Close connection after successful bet submission
+		c.conn.Close()
+		c.conn = nil
 
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
