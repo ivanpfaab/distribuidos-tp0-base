@@ -124,11 +124,21 @@ func (c *Client) StartClientLoop() {
 			)
 			continue // Continue to next message instead of returning
 		}
-
-		log.Infof("action: receive_message | result: success | client_id: %v | msg: %v",
-			c.config.ID,
-			msg,
-		)
+		
+		if msg == message {
+			log.Infof("action: apuesta_enviada | result: success | dni: %v | numero: %v",
+				c.config.Bet.Documento,
+				c.config.Bet.Numero,
+			)
+		} else {
+			log.Infof("message sent: %v\n", msg)
+			log.Infof("message received: %v\n", message)
+			log.Errorf("action: apuesta_enviada | result: fail | dni: %v | numero: %v",
+				c.config.Bet.Documento,
+				c.config.Bet.Numero,
+			)
+			continue
+		}
 
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
