@@ -3,10 +3,7 @@ package protocol
 import (
 	"fmt"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
-	"github.com/op/go-logging"
 )
-
-var log = logging.MustGetLogger("log")
 
 // BetMessage represents a bet submission in simple string format
 type BetMessage struct {
@@ -79,8 +76,6 @@ func (b *BatchBetMessage) FormatBatch() string {
 	// Format message size as 8-byte string (00000000-99999999)
 	sizeStr := fmt.Sprintf("%08d", totalSize)
 	finalMsg := sizeStr + msg
-
-	log.Infof("action: format_batch | result: success | message: %s", finalMsg)
 	
 	return finalMsg
 }
