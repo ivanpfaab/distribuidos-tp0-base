@@ -1,8 +1,6 @@
 import socket
 import logging
-import os
 import signal
-import sys
 
 from protocol.message import BetMessage
 from protocol.communication import CommunicationHandler
@@ -28,12 +26,12 @@ class Server:
     def __init_signals(self):
         """
         Initialize signal handlers for graceful shutdown
-        This is called ONCE during server initialization
+        This is called once during server initialization
         """
         signal.signal(signal.SIGINT, self.__handle_signal)
         signal.signal(signal.SIGTERM, self.__handle_signal)
 
-    def __handle_signal(self, signum, frame):
+    def __handle_signal(self, signum):
         """
         Handle shutdown signals gracefully
         This sets the shutdown flag instead of immediately exiting
@@ -113,7 +111,7 @@ class Server:
             logging.error(f"action: handle_client | result: fail | ip: {addr} | error: {e}")
             
         finally:
-            client_sock.close()
+            communication_handler.close()
 
     def __accept_new_connection(self):
         """
