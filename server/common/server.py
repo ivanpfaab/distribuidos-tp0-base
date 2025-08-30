@@ -76,7 +76,7 @@ class Server:
                     continue
                 except Exception as e:
                     # Client disconnected - this is normal when they finish sending data
-                    logging.info(f"action: client_disconnected | result: success | client finished sending data")
+                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
                     break
         finally:
             logging.info('action: server_shutdown | result: in_progress')
@@ -117,7 +117,6 @@ class Server:
                 except ConnectionResetError as e:
                     # Client has finished sending all data and closed connection
                     # This is normal behavior, not an error
-                    logging.info(f"action: client_finished | result: success | client disconnected normally: {e}")
                     break
                 except Exception as e:
                     # Client disconnected - this is normal when they finish sending data
