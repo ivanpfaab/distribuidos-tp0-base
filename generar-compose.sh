@@ -51,10 +51,10 @@ for i in $(seq 1 $NUM_CLIENTS); do
     image: client:latest
     volumes:
       - ./client/config.yaml:/config.yaml
-      - ./.data/dataset/agency-$i.csv:/data.csv
+      - ./.data/agency-$i.csv:/data/agency-$i.csv
     environment:
       - CLI_ID=$i
-      - CLI_DATA_PATH=/data.csv
+      - CLI_DATA_PATH=/data/agency-$i.csv
     networks:
       - testing_net
     depends_on:
