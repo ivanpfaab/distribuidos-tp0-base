@@ -78,6 +78,9 @@ func (c *Client) createClientSocket() error {
 func (c *Client) submitBet(bet *domain.Bet) error {
 	// Create communication handler
 	commHandler := protocol.NewCommunicationHandler(c.conn)
+
+	// defer is used for executing a line of code at the end of the function
+	// In this case, it's use to close the connection after sending the bet and receiving the response
 	defer commHandler.Close()
 
 	// Create bet message in the required format: <msg length><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
@@ -91,27 +94,21 @@ func (c *Client) submitBet(bet *domain.Bet) error {
 	)
 
 	// Send bet message
-	if err := commHandler.SendMessage(betMsg.String()); err != nil {
+	if err := commHandler.SendMessage(betMsg.Format()); err != nil {
 		return fmt.Errorf("failed to send bet message: %w", err)
 	}
 
 	// Receive response
-	response, err := commHandler.ReceiveMessage()
+	ack, err := commHandler.ReceiveMessage()
 	if err != nil {
 		return fmt.Errorf("failed to receive response: %w", err)
 	}
 
-	// Parse response
-	success, err := protocol.ParseResponse(response)
-	if err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if success {
+	if ack == int(bet.Numero) {
 		log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %d", 
 			bet.Documento, bet.Numero)
 	} else {
-		return fmt.Errorf("bet submission failed: %s", response)
+		return fmt.Errorf("bet submission failed: ack %d != bet number %d", ack, bet.Numero)
 	}
 
 	return nil

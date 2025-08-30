@@ -26,32 +26,32 @@ func NewBetMessage(agencyID int, nombre, apellido, documento, nacimiento string,
 		Numero:     numero,
 	}
 	
-	// Calculate message length 
-	msg.MsgLength = uint8(len(msg.String()))
+	// Calculate message length in bytes
+	msg.MsgLength = msg.msgLength()
 	return msg
 }
 
-// String converts the bet message to the required format
-func (b *BetMessage) String() string {
-	return fmt.Sprintf("%d|%s|%s|%s|%s|%d", 
+func (b *BetMessage) msgLength() uint8 {
+	msg := fmt.Sprintf("%d|%s|%s|%s|%s|%d", 
+	b.AgencyID, 
+	b.Nombre, 
+	b.Apellido, 
+	b.Documento, 
+	b.Nacimiento, 
+	b.Numero)
+
+	return uint8(len(msg))
+}
+
+// converts a bet message to the format:
+// <msg length><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
+func (b *BetMessage) Format() string {
+	return fmt.Sprintf("%d%d|%s|%s|%s|%s|%d", 
+		b.MsgLength,
 		b.AgencyID, 
 		b.Nombre, 
 		b.Apellido, 
 		b.Documento, 
 		b.Nacimiento, 
 		b.Numero)
-}
-
-// ParseResponse parses a simple response from the server
-func ParseResponse(response string) (bool, error) {
-	if len(response) == 0 {
-		return false, fmt.Errorf("empty response from server")
-	}
-	
-	// Check if response is a number (bet number as ACK)
-	if _, err := fmt.Sscanf(response, "%d", new(int)); err == nil {
-		return true, nil
-	} else {
-		return false, fmt.Errorf("server response: %s", response)
-	}
 }

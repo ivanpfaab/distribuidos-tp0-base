@@ -1,5 +1,3 @@
-import socket
-
 class CommunicationHandler:
     """Simple server-side communication handler"""
     
