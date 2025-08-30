@@ -82,10 +82,6 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 	// Create communication handler
 	commHandler := protocol.NewCommunicationHandler(c.conn)
 
-	// defer is used for executing a line of code at the end of the function
-	// In this case, it's use to close the connection after sending the bet and receiving the response
-	defer commHandler.Close()
-
 	betMsg := protocol.NewBatchBetMessage(bets)
 
 	// Send bet message

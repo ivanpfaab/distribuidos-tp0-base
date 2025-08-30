@@ -91,32 +91,41 @@ class Server:
             # Create communication handler
             communication_handler = CommunicationHandler(client_sock)
             
-            # Receive message from client
-            bets_str = communication_handler.receive_message()
-            bets_stored = 0
-            for i, bet_str in enumerate(bets_str):
+            # Keep connection open to handle multiple batches
+            while True:
+                try:
+                    # Receive message from client - this returns a list of Bet objects
+                    bets = communication_handler.receive_message()
+                    bets_stored = 0
 
-                # Parse the bet message
-                bet = BetMessage.bet_from_string(bet_str)
-
-                if bet:
-                    # Store the bet using the store_bets function
-                    store_bets([bet])
-                    bets_stored += 1
-                    # Log successful bet storage
-                    logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
-            
-            
-            # Send success response to client
-            # first number is the total number of bets
-            # second number is the number of bets stored
-            communication_handler.send_response(len(bets_str),bets_stored)
-            
+                    logging.info(f"action: handle_client | result: success | bets: {bets}")
+                    
+                    # Process each bet object
+                    for bet in bets:
+                        if bet:
+                            # Store the bet using the store_bets function
+                            store_bets([bet])
+                            bets_stored += 1
+                            # Log successful bet storage
+                            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
+                    
+                    # Send success response to client
+                    # first number is the total number of bets
+                    # second number is the number of bets stored
+                    communication_handler.send_response(len(bets), bets_stored)
+                    
+                except Exception as e:
+                    # If there's an error receiving/processing a batch, log it but don't close connection
+                    # The client might send more batches
+                    logging.warning(f"action: handle_batch | result: fail | error: {e}")
+                    break
+                    
         except Exception as e:
             addr = client_sock.getpeername() if client_sock else "unknown"
             logging.error(f"action: handle_client | result: fail | ip: {addr} | error: {e}")
             
         finally:
+            # Only close connection when client disconnects or there's a fatal error
             communication_handler.close()
 
     def __accept_new_connection(self):

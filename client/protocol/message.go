@@ -3,7 +3,10 @@ package protocol
 import (
 	"fmt"
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
+	"github.com/op/go-logging"
 )
+
+var log = logging.MustGetLogger("log")
 
 // BetMessage represents a bet submission in simple string format
 type BetMessage struct {
@@ -47,10 +50,10 @@ func NewBatchBetMessage(bets []*domain.Bet) *BatchBetMessage {
 }
 
 // converts a bet message to the format:
-// <bet size><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
+// <agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>&&
 func (b *BetMessage) Format() string {
 	// Calculate the actual bet message content (without the size prefix)
-	betContent := fmt.Sprintf("%d|%s|%s|%s|%s|%d", 
+	betContent := fmt.Sprintf("%d|%s|%s|%s|%s|%d&&", 
 		b.AgencyID, 
 		b.Nombre, 
 		b.Apellido, 
@@ -58,38 +61,26 @@ func (b *BetMessage) Format() string {
 		b.Nacimiento, 
 		b.Numero)
 	
-	// The bet size is the length of the bet content
-	betSize := len(betContent)
-	
-	// Format bet size as a 2-digit string (00-99)
-	// This allows us to handle bet sizes up to 99 characters
-	sizeStr := fmt.Sprintf("%02d", betSize)
-	
-	return fmt.Sprintf("%s%s", sizeStr, betContent)
+	return betContent
 }
 
 // Formats batch bet message in the format: 
-// <msg size (8 bytes)><bet size 1><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero><bet size 2>...
+// <msg size (8 bytes)><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>$$<agency id>...
 func (b *BatchBetMessage) FormatBatch() string {
 	// Calculate total message size (sum of all bet message lengths)
 	var totalSize uint32
+	msg := ""
 	for _, bet := range b.Bets {
-		betContent := fmt.Sprintf("%d|%s|%s|%s|%s|%d", 
-			bet.AgencyID, 
-			bet.Nombre, 
-			bet.Apellido, 
-			bet.Documento, 
-			bet.Nacimiento, 
-			bet.Numero)
+		betContent := bet.Format()
 		totalSize += uint32(len(betContent))
+		msg += betContent
 	}
 	
 	// Format message size as 8-byte string (00000000-99999999)
 	sizeStr := fmt.Sprintf("%08d", totalSize)
+	finalMsg := sizeStr + msg
+
+	log.Infof("action: format_batch | result: success | message: %s", finalMsg)
 	
-	msg := sizeStr
-	for _, bet := range b.Bets {
-		msg += bet.Format()
-	}
-	return msg
+	return finalMsg
 }

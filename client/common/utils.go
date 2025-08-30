@@ -35,6 +35,7 @@ func (c *CSVChunkReader) ReadChunk(x int) ([][]string, error) {
       if err != nil {
           return nil, err
       }
+      
       lines = append(lines, record)
   }
   

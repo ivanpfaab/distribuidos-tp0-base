@@ -16,108 +16,48 @@ class CommunicationHandler:
                 raise ConnectionError("Connection closed by client or incomplete size")
             
             total_size = int(size_bytes.decode('utf-8'))
-            logging.info(f"\n=== MESSAGE RECEPTION START ===\n")
-            logging.info(f"Expected total message size: {total_size} bytes")
-            logging.info(f"Size bytes (string): {size_bytes.decode('utf-8')}")
+            logging.info(f"Total message size: {total_size} bytes")
             
             # Read the complete message - keep reading until we get all bytes
             message_bytes = b''
             remaining_bytes = total_size
             
-            logging.info(f"Need to read {remaining_bytes} additional bytes")
-            
             while len(message_bytes) < remaining_bytes:
+
                 chunk = self.conn.recv(remaining_bytes - len(message_bytes))
                 if not chunk:
                     raise ConnectionError("Connection closed by client")
                 message_bytes += chunk
-                logging.info(f"Read chunk: {len(chunk)} bytes, total so far: {len(message_bytes)}/{remaining_bytes}")
-                logging.info(f"Chunk content (repr): {repr(chunk)}")
-            
-            # Now we have the complete message, log it thoroughly
-            logging.info(f"\n=== COMPLETE MESSAGE RECEIVED ===\n")
-            logging.info(f"Total bytes received: {len(message_bytes) + 8} (including size bytes)")
-            logging.info(f"Message bytes (repr): {repr(message_bytes)}")
             
             # Try to decode as UTF-8
             try:
                 message_str = message_bytes.decode('utf-8')
-                logging.info(f"Message as string: {repr(message_str)}")
-                logging.info(f"Message length: {len(message_str)} characters")
             except UnicodeDecodeError as e:
-                logging.error(f"Failed to decode message as UTF-8: {e}")
-                logging.error(f"Raw bytes: {message_bytes}")
                 raise Exception(f"Message encoding error: {e}")
             
-            # Parse the batch message
-            logging.info(f"=== STARTING MESSAGE PARSING ===")
             bets = self._parse_batch_message(message_str)
-            
-            logging.info(f"=== MESSAGE RECEPTION COMPLETE ===")
-            logging.info(f"Successfully parsed {len(bets)} bets")
             
             return bets
             
         except Exception as e:
-            logging.error(f"=== MESSAGE RECEPTION FAILED ===")
-            logging.error(f"Error: {e}")
             raise Exception(f"Failed to receive message: {e}")
     
     def _parse_batch_message(self, message_str):
-        """Parse batch bet message format: <bet size 1><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>..."""
+        """Parse batch bet message format: <agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>&&<agency id>..."""
+        # Remove the last element of the list since it's an extra from the split
+        bets_str = message_str.split('&&')[:-1]
         bets = []
-        i = 0
         
-        logging.info(f"=== PARSING BATCH MESSAGE ===")
-        logging.info(f"Input message: {repr(message_str)}")
-        logging.info(f"Message length: {len(message_str)} characters")
-        
-        while i < len(message_str):
-            logging.info(f"--- Parsing at position {i} ---")
-            logging.info(f"Remaining characters: {len(message_str) - i}")
-            logging.info(f"Remaining substring: {repr(message_str[i:])}")
-            
-            # Need at least 2 characters for the bet size
-            if i + 2 > len(message_str):
-                logging.warning(f"Not enough characters remaining for bet size at position {i}")
-                break
-                
-            # Read bet size (2 characters for 2-digit length)
-            try:
-                bet_size_chars = message_str[i:i+2]
-                bet_size = int(bet_size_chars)
-                logging.info(f"Position {i}: bet size characters '{bet_size_chars}' = {bet_size}")
-            except ValueError:
-                logging.warning(f"Invalid bet size characters '{message_str[i:i+2]}' at position {i}")
-                break
-                
-            i += 2  # Skip 2 characters for the size
-            logging.info(f"After reading size, position is now {i}")
-            
-            # Check if we have enough characters for the complete bet message
-            if i + bet_size > len(message_str):
-                logging.warning(f"Bet message truncated at position {i}, expected {bet_size} chars but only {len(message_str) - i} remaining")
-                logging.warning(f"Remaining substring: {repr(message_str[i:])}")
-                break
-                
-            # Extract the complete bet message
-            bet_message = message_str[i:i+bet_size]
-            logging.info(f"Position {i}: extracted bet message (length {bet_size}): {repr(bet_message)}")
-            i += bet_size
-            logging.info(f"After extracting bet message, position is now {i}")
-            
+        for bet_str in bets_str:
             # Parse individual bet message
             try:
-                logging.info(f"Attempting to parse bet message: {repr(bet_message)}")
-                bet = BetMessage.bet_from_string(bet_message)
+                logging.info(f"Attempting to parse bet message: {repr(bet_str)}")
+                bet = BetMessage.bet_from_string(bet_str)
                 bets.append(bet)
-                logging.info(f"Successfully parsed bet: {bet}")
+                
             except ValueError as e:
-                logging.warning(f"Failed to parse bet message '{bet_message}': {e}")
+                logging.warning(f"Failed to parse bet message '{bet_str}': {e}")
                 continue
-        
-        logging.info(f"=== PARSING COMPLETE ===")
-        logging.info(f"Successfully parsed {len(bets)} bets")
         return bets
     
     def send_response(self, total_bets, stored_bets):
