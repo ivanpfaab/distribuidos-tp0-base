@@ -92,19 +92,25 @@ class Server:
             communication_handler = CommunicationHandler(client_sock)
             
             # Receive message from client
-            message_str = communication_handler.receive_message()
+            bets_str = communication_handler.receive_message()
+            bets_stored = 0
+            for i, bet_str in enumerate(bets_str):
 
-            # Parse the bet message
-            bet = BetMessage.bet_from_string(message_str)
+                # Parse the bet message
+                bet = BetMessage.bet_from_string(bet_str)
+
+                if bet:
+                    # Store the bet using the store_bets function
+                    store_bets([bet])
+                    bets_stored += 1
+                    # Log successful bet storage
+                    logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
             
-            # Store the bet using the store_bets function
-            store_bets([bet])
             
-            # Log successful bet storage
-            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
-            
-            # Send success response to client (using bet number as ACK)
-            communication_handler.send_response(str(bet.number))
+            # Send success response to client
+            # first number is the total number of bets
+            # second number is the number of bets stored
+            communication_handler.send_response(len(bets_str),bets_stored)
             
         except Exception as e:
             addr = client_sock.getpeername() if client_sock else "unknown"

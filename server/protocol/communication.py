@@ -15,24 +15,37 @@ class CommunicationHandler:
             length = length_bytes[0]
             
             # Then read exactly that many bytes for the message
+            bets = []
             message_bytes = b''
             while len(message_bytes) < length:
-                chunk = self.conn.recv(length - len(message_bytes))
+                sub_length = self.conn.recv(1)
+                if not sub_length:
+                    continue
+                message_bytes += sub_length
+                sub_length = sub_length[0]
+                chunk = self.conn.recv(length - len(sub_length))
+                
                 if not chunk:
                     raise ConnectionError("Connection closed by client")
                 message_bytes += chunk
+                bets.append(chunk.decode('utf-8'))
             
-            # Convert bytes to string
-            return message_bytes.decode('utf-8')
+            # return array of bets in string format
+            return bets
             
         except Exception as e:
             raise Exception(f"Failed to receive message: {e}")
     
-    def send_response(self, response):
+    def send_response(self, total_bets, stored_bets):
         """Send a simple response to the client"""
         try:
             # Add newline for simple text-based protocol
-            full_response = response + "\n"
+            if total_bets == stored_bets:
+                logging.info(f'action: apuesta_recibida | result: success | cantidad: ${stored_bets}')
+                full_response = stored_bets + "\n"
+            else:
+                logging.info(f'action: apuesta_recibida | result: fail | cantidad: ${stored_bets}')
+                full_response = str(stored_bets-total_bets) + "\n"
             self.conn.send(full_response.encode('utf-8'))
         except Exception as e:
             raise Exception(f"Failed to send response: {e}")
