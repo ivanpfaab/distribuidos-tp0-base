@@ -26,12 +26,15 @@ func (ch *CommunicationHandler) SendMessage(msg string) error {
 	// Combine length byte and message into one buffer
 	buffer := append([]byte{length}, []byte(msg)...)
 	
-	// Send everything in a single write operation
-	_, err := ch.conn.Write(buffer)
-	if err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+	written_bytes := 0
+	for written_bytes < len(buffer) {
+		n, err := ch.conn.Write(buffer[written_bytes:])
+		if err != nil {
+			return fmt.Errorf("failed to send message: %w", err)
+		}
+		written_bytes += n
 	}
-	
+
 	return nil
 }
 
