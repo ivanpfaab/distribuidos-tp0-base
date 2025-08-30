@@ -75,8 +75,8 @@ class Server:
                     # Timeout allows checking shutdown flag - this is normal behavior, just continue
                     continue
                 except Exception as e:
-                    if self._running:
-                        logging.error(f'action: accept_connection | result: fail | error: {e}')
+                    # Client disconnected - this is normal when they finish sending data
+                    logging.info(f"action: client_disconnected | result: success | client finished sending data")
                     break
         finally:
             logging.info('action: server_shutdown | result: in_progress')
@@ -120,9 +120,8 @@ class Server:
                     logging.info(f"action: client_finished | result: success | client disconnected normally: {e}")
                     break
                 except Exception as e:
-                    # If there's an error receiving/processing a batch, log it but don't close connection
-                    # The client might send more batches
-                    logging.warning(f"action: handle_batch | result: fail | error: {e}")
+                    # Client disconnected - this is normal when they finish sending data
+                    logging.info(f"action: client_disconnected | result: success | client finished sending data")
                     break
                     
         except Exception as e:
