@@ -32,3 +32,12 @@ func (b *Bet) String() string {
 	return fmt.Sprintf("Bet{AgencyID: %d, DNI: %s, Number: %d, Name: %s %s, Birth: %s}", 
 		b.AgencyID, b.Documento, b.Numero, b.Nombre, b.Apellido, b.Nacimiento)
 }
+
+// BetsFromChunk creates a new bet from a chunk
+func BetsFromChunk(chunk [][]string) []*Bet {
+	var bets []*Bet
+	for _, row := range chunk {
+		bets = append(bets, NewBet(row[0], row[1], row[2], row[3], row[4], row[5]))
+	}
+	return bets
+}

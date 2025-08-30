@@ -5,15 +5,41 @@ import (
   "path/filepath"
 )
 
-// OpenFileForRead Opens a file for reading and returns the file handle
-func OpenFileForRead(path string) (*os.File, error) {
-  abs, err := filepath.Abs(path)
-  if err != nil {
-    return nil, err
+
+type CSVChunkReader struct {
+  reader *csv.Reader
+  isEOF  bool
+}
+
+func NewCSVChunkReader(file *os.File) *CSVChunkReader {
+  return &CSVChunkReader{
+      reader: csv.NewReader(file),
+      isEOF:  false,
   }
-  f, err := os.Open(abs) // read-only
-  if err != nil {
-    return nil, err
+}
+
+func (c *CSVChunkReader) ReadChunk(x int) ([][]string, error) {
+  if c.isEOF {
+      return nil, io.EOF
   }
-  return f, nil
+  
+  var lines [][]string
+  
+  for i := 0; i < x; i++ {
+      record, err := c.reader.Read()
+      if err == io.EOF {
+          c.isEOF = true
+          break
+      }
+      if err != nil {
+          return nil, err
+      }
+      lines = append(lines, record)
+  }
+  
+  return lines, nil
+}
+
+func (c *CSVChunkReader) HasMore() bool {
+  return !c.isEOF
 }

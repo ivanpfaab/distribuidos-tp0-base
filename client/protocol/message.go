@@ -15,6 +15,11 @@ type BetMessage struct {
 	Numero     uint
 }
 
+type BatchBetMessage struct {
+	MsgSize uint8
+	Bets    []*BetMessage
+}
+
 // NewBetMessage creates a new bet message
 func NewBetMessage(agencyID int, nombre, apellido, documento, nacimiento string, numero uint) *BetMessage {
 	msg := &BetMessage{
@@ -27,8 +32,23 @@ func NewBetMessage(agencyID int, nombre, apellido, documento, nacimiento string,
 	}
 	
 	// Calculate message length in bytes
-	msg.MsgLength = msg.msgLength()
+	msg.MsgLength = msg.msgLength()+1
 	return msg
+}
+
+// NewBatchBetMessage creates a new batch bet message
+func NewBatchBetMessage(bets []*domain.Bet) *BatchBetMessage {
+	betMessages := make([]*BetMessage, 0, len(bets))
+	msgSize := 0
+	for i, bet := range bets {
+		betMessage := NewBetMessage(bet.AgencyID, bet.Nombre, bet.Apellido, bet.Documento, bet.Nacimiento, bet.Numero)
+		betMessages = append(betMessages, betMessage)
+		msgSize += betMessage.MsgLength
+	}
+	return &BatchBetMessage{
+		MsgSize: msgSize+1,
+		Bets: betMessages,
+	}
 }
 
 func (b *BetMessage) msgLength() uint8 {
@@ -54,4 +74,18 @@ func (b *BetMessage) Format() string {
 		b.Documento, 
 		b.Nacimiento, 
 		b.Numero)
+}
+
+// Formats batch bet message in the format: 
+// <msg size>
+// <bet size 1><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
+// <bet size 2><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
+// ...
+// <bet size n><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
+func (b *BatchBetMessage) FormatBatch() string {
+	msg := fmt.Sprintf("%d", b.MsgSize)
+	for _, bet := range b.Bets {
+		msg += bet.Format()
+	}
+	return msg
 }

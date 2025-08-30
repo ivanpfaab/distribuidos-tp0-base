@@ -76,7 +76,7 @@ func (c *Client) createClientSocket() error {
 }
 
 // submitBet submits a bet to the server using the simple string protocol
-func (c *Client) submitBet(bet *domain.Bet) error {
+func (c *Client) submitBets(bets []*domain.Bet) error {
 	// Create communication handler
 	commHandler := protocol.NewCommunicationHandler(c.conn)
 
@@ -84,18 +84,10 @@ func (c *Client) submitBet(bet *domain.Bet) error {
 	// In this case, it's use to close the connection after sending the bet and receiving the response
 	defer commHandler.Close()
 
-	// Create bet message in the required format: <msg length><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>
-	betMsg := protocol.NewBetMessage(
-		bet.AgencyID,
-		bet.Nombre,
-		bet.Apellido,
-		bet.Documento,
-		bet.Nacimiento,
-		bet.Numero, 
-	)
+	betMsg := protocol.NewBatchBetMessage(bets)
 
 	// Send bet message
-	if err := commHandler.SendMessage(betMsg.Format()); err != nil {
+	if err := commHandler.SendMessage(betMsg.FormatBatch()); err != nil {
 		return fmt.Errorf("failed to send bet message: %w", err)
 	}
 
@@ -105,11 +97,10 @@ func (c *Client) submitBet(bet *domain.Bet) error {
 		return fmt.Errorf("failed to receive response: %w", err)
 	}
 
-	if ack == int(bet.Numero) {
-		log.Infof("action: apuesta_enviada | result: success | dni: %s | numero: %d", 
-			bet.Documento, bet.Numero)
+	if ack == len(bets) {
+		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", len(bets))
 	} else {
-		return fmt.Errorf("bet submission failed: ack %d != bet number %d", ack, bet.Numero)
+		return log.Infof("action: apuesta_recibida | result: fail | cantidad: %d", ack)
 	}
 
 	return nil
@@ -117,16 +108,18 @@ func (c *Client) submitBet(bet *domain.Bet) error {
 
 // StartClientLoop Send messages to the client until some time threshold is met
 func (c *Client) StartClientLoop() {
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; msgID <= c.config.LoopAmount && c.running; msgID++ {
-		// Check if we should shutdown before creating connection
-		if !c.running {
-			log.Infof("action: client_shutdown | result: in_progress | client_id: %v", c.config.ID)
-			break
-		}
 
-		// Create the connection to the server in every loop iteration
+	file, err := os.Open(c.config.FilePath)
+	if err != nil {
+		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	defer file.Close()
+	chunkReader := NewCSVChunkReader(file)
+
+	for loopCount := 0; loopCount < c.config.LoopAmount; loopCount++ {
+		// Create the connection to the server
 		if err := c.createClientSocket(); err != nil {
 			log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			// Wait before retrying
@@ -141,22 +134,42 @@ func (c *Client) StartClientLoop() {
 			continue
 		}
 
-		// Submit bet using the simple protocol
-		if err := c.submitBet(c.config.Bet); err != nil {
+		break
+	}
+
+	if loopCount >= c.config.LoopAmount {
+		log.Errorf("action: create_socket | result: fail | client_id: %v | error: max retries reached", c.config.ID)
+		return
+	}
+
+	// There is an autoincremental msgID to identify every message sent
+	// Messages if the message amount threshold has not been surpassed
+	for msgID := 1; chunkReader.HasMore() && c.running; msgID++ {
+
+		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount)
+
+		//Check error handling with exercise requirements
+		if err != nil && err != io.EOF {
+			log.Errorf("action: read_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+
+		bets := domain.BetsFromChunk(chunk)
+
+		// Submit bets using batch request
+		if err := c.submitBets(bets); err != nil {
 			log.Errorf("action: submit_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			c.conn.Close()
-			c.conn = nil
 			time.Sleep(c.config.LoopPeriod)
 			continue
 		}
 
-		// Close connection after successful bet submission
-		c.conn.Close()
-		c.conn = nil
-
 		// Wait a time between sending one message and the next one
 		time.Sleep(c.config.LoopPeriod)
 	}
+
+	// Close connection after submission
+	c.conn.Close()
+	c.conn = nil
 	
 	if c.running {
 		log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
