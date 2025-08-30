@@ -98,7 +98,7 @@ class Server:
                     bets = communication_handler.receive_message()
                     bets_stored = 0
 
-                    logging.info(f"action: handle_client | result: success | bets: {bets}")
+                    logging.debug(f"action: handle_client | result: success | bets: {bets}")
                     
                     # Process each bet object
                     for bet in bets:
@@ -107,7 +107,7 @@ class Server:
                             store_bets([bet])
                             bets_stored += 1
                             # Log successful bet storage
-                            logging.info(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
+                            logging.debug(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
                     
                     # Send success response to client
                     # first number is the total number of bets
@@ -120,7 +120,7 @@ class Server:
                     break
                 except Exception as e:
                     # Client disconnected - this is normal when they finish sending data
-                    logging.info(f"action: client_disconnected | result: success | client finished sending data")
+                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
                     break
                     
         except Exception as e:
