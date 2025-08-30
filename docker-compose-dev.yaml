@@ -15,30 +15,10 @@ services:
     image: client:latest
     volumes:
       - ./client/config.yaml:/config.yaml
+      - ./.data/dataset/agency-1.csv:/data.csv
     environment:
       - CLI_ID=1
-      - CLI_BET_NOMBRE=Santiago Lionel
-      - CLI_BET_APELLIDO=Lorca
-      - CLI_BET_DOCUMENTO=30904465
-      - CLI_BET_NACIMIENTO=1999-03-17
-      - CLI_BET_NUMERO=1
-    networks:
-      - testing_net
-    depends_on:
-      - server
-
-  client2:
-    container_name: client2
-    image: client:latest
-    volumes:
-      - ./client/config.yaml:/config.yaml
-    environment:
-      - CLI_ID=2
-      - CLI_BET_NOMBRE=Santiago Lionel
-      - CLI_BET_APELLIDO=Lorca
-      - CLI_BET_DOCUMENTO=30904465
-      - CLI_BET_NACIMIENTO=1999-03-17
-      - CLI_BET_NUMERO=2
+      - CLI_DATA_PATH=/data.csv
     networks:
       - testing_net
     depends_on:

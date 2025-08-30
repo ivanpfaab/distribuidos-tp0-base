@@ -18,13 +18,13 @@ func NewCommunicationHandler(conn net.Conn) *CommunicationHandler {
 	}
 }
 
-// SendMessage sends a message with 1-byte length prefix to the server
+// SendMessage sends a message with 8-byte string length prefix to the server
 func (ch *CommunicationHandler) SendMessage(msg string) error {
-	// Create a single buffer with length byte + message
-	length := uint8(len(msg))
+	// Create a single buffer with 8-byte string length prefix + message
+	lengthStr := fmt.Sprintf("%08d", len(msg))  // Format as 8-character string (00000000-99999999)
 	
-	// Combine length byte and message into one buffer
-	buffer := append([]byte{length}, []byte(msg)...)
+	// Combine length string and message into one buffer
+	buffer := append([]byte(lengthStr), []byte(msg)...)
 	
 	writtenBytes := 0
 	for writtenBytes < len(buffer) {

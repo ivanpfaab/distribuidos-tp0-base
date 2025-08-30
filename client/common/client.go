@@ -2,11 +2,13 @@ package common
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"time"
 	"os"
 	"os/signal"
 	"syscall"
+	"strconv"
 
 
 	"github.com/op/go-logging"
@@ -100,7 +102,8 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 	if ack == len(bets) {
 		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", len(bets))
 	} else {
-		return log.Infof("action: apuesta_recibida | result: fail | cantidad: %d", ack)
+		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", ack)
+		return fmt.Errorf("acknowledgment mismatch: expected %d, got %d", len(bets), ack)
 	}
 
 	return nil
@@ -118,7 +121,8 @@ func (c *Client) StartClientLoop() {
 	defer file.Close()
 	chunkReader := NewCSVChunkReader(file)
 
-	for loopCount := 0; loopCount < c.config.LoopAmount; loopCount++ {
+	loopCount := 0
+	for ; loopCount < c.config.LoopAmount; loopCount++ {
 		// Create the connection to the server
 		if err := c.createClientSocket(); err != nil {
 			log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v", c.config.ID, err)
@@ -129,7 +133,7 @@ func (c *Client) StartClientLoop() {
 
 		// Check if connection was created successfully
 		if c.conn == nil {
-			log.Errorf("action: create_socket | result: fail | client_id: %v | error: connection is nil", c.config.ID)
+			log.Errorf("action: create_socket | result: fail | client_id: %v | error: connection is nil", c.config.ID, err)
 			time.Sleep(c.config.LoopPeriod)
 			continue
 		}
@@ -154,7 +158,18 @@ func (c *Client) StartClientLoop() {
 			return
 		}
 
-		bets := domain.BetsFromChunk(chunk)
+		// Convert client ID to integer for agency ID
+		agencyID, err := strconv.Atoi(c.config.ID)
+		if err != nil {
+			log.Errorf("action: parse_client_id | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+		
+		bets, err := domain.BetsFromChunk(chunk, agencyID)
+		if err != nil {
+			log.Errorf("action: parse_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
 
 		// Submit bets using batch request
 		if err := c.submitBets(bets); err != nil {
