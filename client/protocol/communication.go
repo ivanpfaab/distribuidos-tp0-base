@@ -26,31 +26,53 @@ func (ch *CommunicationHandler) SendMessage(msg string) error {
 	// Combine length byte and message into one buffer
 	buffer := append([]byte{length}, []byte(msg)...)
 	
-	written_bytes := 0
-	for written_bytes < len(buffer) {
-		n, err := ch.conn.Write(buffer[written_bytes:])
+	writtenBytes := 0
+	for writtenBytes < len(buffer) {
+		n, err := ch.conn.Write(buffer[writtenBytes:])
 		if err != nil {
 			return fmt.Errorf("failed to send message: %w", err)
 		}
-		written_bytes += n
+		writtenBytes += n
 	}
 
 	return nil
 }
 
+// ParseResponse parses a simple response from the server
+func ParseResponse(response string) (int, error) {
+	if len(response) == 0 {
+		return -1, fmt.Errorf("empty response from server")
+	}
+	
+	// The response is a number in string format
+	var numericResponse int
+	_, err := fmt.Sscanf(response, "%d", &numericResponse)
+	if err != nil {
+		return -1, fmt.Errorf("invalid response format: %w", err)
+	}
+
+	if numericResponse < 0 {
+		return numericResponse, fmt.Errorf("unexpected behavior in server: %w", err) // Negative response indicates failure
+	}
+
+	return numericResponse, nil
+}
+
 // ReceiveMessage receives a simple string message from the server
-func (ch *CommunicationHandler) ReceiveMessage() (string, error) {
+func (ch *CommunicationHandler) ReceiveMessage() (int, error) {
 	// Read response using bufio for simple line-based protocol
 	reader := bufio.NewReader(ch.conn)
 	response, err := reader.ReadString('\n')
 	if err != nil {
-		return "", fmt.Errorf("failed to receive message: %w", err)
+		return -1, fmt.Errorf("failed to receive message: %w", err)
 	}
 	
 	// Remove trailing newline
 	response = response[:len(response)-1]
+
+	parsedResponse, err := ParseResponse(response)
 	
-	return response, nil
+	return parsedResponse, err
 }
 
 // Close closes the underlying connection
