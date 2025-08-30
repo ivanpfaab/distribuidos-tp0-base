@@ -114,6 +114,11 @@ class Server:
                     # second number is the number of bets stored
                     communication_handler.send_response(len(bets), bets_stored)
                     
+                except ConnectionResetError as e:
+                    # Client has finished sending all data and closed connection
+                    # This is normal behavior, not an error
+                    logging.info(f"action: client_finished | result: success | client disconnected normally: {e}")
+                    break
                 except Exception as e:
                     # If there's an error receiving/processing a batch, log it but don't close connection
                     # The client might send more batches

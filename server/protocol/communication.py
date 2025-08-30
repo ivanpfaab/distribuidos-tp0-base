@@ -13,7 +13,7 @@ class CommunicationHandler:
             # First read the total message size (8 characters for 8-digit length)
             size_bytes = self.conn.recv(8)
             if not size_bytes or len(size_bytes) < 8:
-                raise ConnectionError("Connection closed by client or incomplete size")
+                raise ConnectionResetError("Connection closed by client or incomplete size")
             
             total_size = int(size_bytes.decode('utf-8'))
             logging.info(f"Total message size: {total_size} bytes")
@@ -26,7 +26,7 @@ class CommunicationHandler:
 
                 chunk = self.conn.recv(remaining_bytes - len(message_bytes))
                 if not chunk:
-                    raise ConnectionError("Connection closed by client")
+                    raise ConnectionResetError("Connection closed by client")
                 message_bytes += chunk
             
             # Try to decode as UTF-8
