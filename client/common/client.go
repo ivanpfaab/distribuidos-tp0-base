@@ -18,11 +18,12 @@ var log = logging.MustGetLogger("log")
 
 // ClientConfig Configuration used by the client
 type ClientConfig struct {
-	ID            string
-	ServerAddress string
-	LoopAmount    int
-	LoopPeriod    time.Duration
-	Bet           *domain.Bet
+	ID            	string
+	ServerAddress 	string
+	LoopAmount    	int
+	LoopPeriod    	time.Duration
+	FilePath	  	string
+	MaxBatchAmount 	int
 }
 
 // Client Entity that encapsulates how

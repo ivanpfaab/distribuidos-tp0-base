@@ -96,25 +96,6 @@ func PrintConfig(v *viper.Viper) {
 	)
 }
 
-// createBetFromConfig creates a bet object from the configuration
-func createBetFromConfig(v *viper.Viper) (*domain.Bet, error) {
-	agencyID := v.GetInt("id")
-	nombre := v.GetString("bet.nombre")
-	apellido := v.GetString("bet.apellido")
-	documento := v.GetString("bet.documento")
-	nacimiento := v.GetString("bet.nacimiento")
-	numero := v.GetUint("bet.numero")
-
-	//TODO: Add validation for bets
-
-	bet, err := domain.NewBet(agencyID, nombre, apellido, documento, nacimiento, numero)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bet: %w", err)
-	}
-
-	return bet, nil
-}
-
 func main() {
 	v, err := InitConfig()
 	if err != nil {
@@ -128,18 +109,13 @@ func main() {
 	// Print program config with debugging purposes
 	PrintConfig(v)
 
-	// Create bet from configuration
-	bet, err := createBetFromConfig(v)
-	if err != nil {
-		log.Criticalf("Failed to create bet from configuration: %s", err)
-	}
-
 	clientConfig := common.ClientConfig{
-		ServerAddress: v.GetString("server.address"),
-		ID:            v.GetString("id"),
-		LoopAmount:    v.GetInt("loop.amount"),
-		LoopPeriod:    v.GetDuration("loop.period"),
-		Bet:           bet, 
+		ServerAddress: 	v.GetString("server.address"),
+		ID:            	v.GetString("id"),
+		LoopAmount:    	v.GetInt("loop.amount"),
+		LoopPeriod:    	v.GetDuration("loop.period"),
+		FilePath:      	v.GetString("data.path"),
+		MaxBatchAmount: v.GetInt("batch.maxAmount"),
 	}
 
 	client := common.NewClient(clientConfig)
