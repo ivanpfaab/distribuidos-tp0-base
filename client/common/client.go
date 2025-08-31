@@ -142,10 +142,12 @@ func (c *Client) StartClientLoop() {
 		return
 	}
 
-	// Process data in chunks incrementally - read chunk, send it, then read next chunk
+	// Process data in batches according to MaxBatchAmount
+	var currentBatch [][]string
+	
 	for chunkReader.HasMore() && c.running {
-		// Read a chunk of the configured batch size
-		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount)
+		// Read a chunk and add to current batch
+		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount) 
 		if err != nil && err != io.EOF {
 			log.Errorf("action: read_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return
@@ -154,29 +156,36 @@ func (c *Client) StartClientLoop() {
 		if err == io.EOF {
 			break
 		}
-
-		// Convert client ID to integer for agency ID
-		agencyID, err := strconv.Atoi(c.config.ID)
-		if err != nil {
-			log.Errorf("action: parse_client_id | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return
-		}
 		
-		bets, err := domain.BetsFromChunk(chunk, agencyID)
-		if err != nil {
-			log.Errorf("action: parse_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return
-		}
+		// Add chunk to current batch
+		currentBatch = append(currentBatch, chunk...)
+		
+		// If we've reached MaxBatchAmount or there's no more data, process the batch
+		if len(currentBatch) >= c.config.MaxBatchAmount || !chunkReader.HasMore() {
+			// Convert client ID to integer for agency ID
+			agencyID, err := strconv.Atoi(c.config.ID)
+			if err != nil {
+				log.Errorf("action: parse_client_id | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				return
+			}
+			
+			bets, err := domain.BetsFromChunk(currentBatch, agencyID)
+			if err != nil {
+				log.Errorf("action: parse_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				return
+			}
 
-		// Submit bets using batch request
-		if err := c.submitBets(bets); err != nil {
-			log.Errorf("action: submit_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			// Submit bets using batch request
+			if err := c.submitBets(bets); err != nil {
+				log.Errorf("action: submit_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				time.Sleep(c.config.LoopPeriod)
+				continue
+			}
+
+			// Clear current batch and wait before next batch
+			currentBatch = currentBatch[:0]
 			time.Sleep(c.config.LoopPeriod)
-			continue
 		}
-
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
 	}
 
 	// Close connection only after all bets have been processed
