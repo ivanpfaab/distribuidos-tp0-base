@@ -96,9 +96,9 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 	}
 
 	if ack == len(bets) {
-		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", len(bets))
+		log.Infof("action: batch_sent | result: success | cantidad: %d", len(bets))
 	} else {
-		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", ack)
+		log.Errorf("action: batch_sent | result: fail | cantidad: %d", ack)
 		return fmt.Errorf("server returned non-positive response: %d", ack)
 	}
 
