@@ -166,6 +166,7 @@ func (c *Client) queryWinners() error {
 		
 		// Successfully received winners
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
+		log.Infof("action: consulta_ganadores | result: success | ganadores: %v", winners)
 		gotWinners = true
 		return nil
 	}
