@@ -154,6 +154,10 @@ func (c *Client) StartClientLoop() {
 			return
 		}
 
+		if err == io.EOF {
+			break
+		}
+
 		// Convert client ID to integer for agency ID
 		agencyID, err := strconv.Atoi(c.config.ID)
 		if err != nil {
@@ -182,7 +186,7 @@ func (c *Client) StartClientLoop() {
 	c.conn.Close()
 	c.conn = nil
 	c.running = false
-	
+
 	if c.running {
 		log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
 	} else {
