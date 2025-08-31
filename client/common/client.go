@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"strconv"
+	"strings"
 
 
 	"github.com/op/go-logging"
@@ -84,8 +85,8 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 
 	betMsg := protocol.NewBatchBetMessage(bets)
 
-	// Send bet message
-	if err := commHandler.SendMessage(betMsg.FormatBatch()); err != nil {
+	// Send bet message using new protocol
+	if err := commHandler.SendBatchBets(betMsg.FormatBatch()); err != nil {
 		return fmt.Errorf("failed to send bet message: %w", err)
 	}
 
@@ -103,6 +104,73 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 	}
 
 	return nil
+}
+
+// notifyCompletion notifies the server that this agency has finished sending all bets
+func (c *Client) notifyCompletion() error {
+	commHandler := protocol.NewCommunicationHandler(c.conn)
+	
+	agencyID, err := strconv.Atoi(c.config.ID)
+	if err != nil {
+		return fmt.Errorf("failed to parse agency ID: %w", err)
+	}
+	
+	if err := commHandler.SendNotification(agencyID); err != nil {
+		return fmt.Errorf("failed to send completion notification: %w", err)
+	}
+	
+	// Wait for acknowledgment using new protocol
+	success, err := commHandler.ReceiveNotificationResponse()
+	if err != nil {
+		return fmt.Errorf("failed to receive notification response: %w", err)
+	}
+	
+	if !success {
+		return fmt.Errorf("server returned notification failure")
+	}
+	
+	log.Infof("action: notification_sent | result: success | client_id: %s", c.config.ID)
+	return nil
+}
+
+// queryWinners queries the server for winners from this agency
+func (c *Client) queryWinners() error {
+	commHandler := protocol.NewCommunicationHandler(c.conn)
+	
+	agencyID, err := strconv.Atoi(c.config.ID)
+	if err != nil {
+		return fmt.Errorf("failed to parse agency ID: %w", err)
+	}
+	
+	retryDelay := c.config.LoopPeriod
+	gotWinners := false
+	attempt := 0
+
+	for !gotWinners {
+		if err := commHandler.SendWinnerQuery(agencyID); err != nil {
+			return fmt.Errorf("failed to send winner query: %w", err)
+		}
+		
+		// Receive winner list or waiting response
+		winners, err := commHandler.ReceiveWinnerList()
+		if err != nil {
+			if strings.Contains(err.Error(), "server waiting for other clients") {
+				// Server is waiting for other clients, retry after delay
+				log.Infof("action: winner_query | result: waiting | client_id: %s | attempt: %d", c.config.ID, attempt+1)
+				retryDelay = retryDelay * 2 // Double the delay to wait before retrying
+				time.Sleep(retryDelay)
+				continue
+			}
+			return fmt.Errorf("failed to receive winner list: %w", err)
+		}
+		
+		// Successfully received winners
+		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
+		gotWinners = true
+		return nil
+	}
+	
+	return fmt.Errorf("max retries exceeded while waiting for server to be ready")
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
@@ -188,11 +256,31 @@ func (c *Client) StartClientLoop() {
 		}
 	}
 
-	// Close connection only after all bets have been processed
+	// After all bets are sent, notify completion and disconnect
+	if c.running {
+		// Notify server that this agency has finished
+		if err := c.notifyCompletion(); err != nil {
+			log.Errorf("action: notify_completion | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		}
+	}
+
+	// Close connection after sending all bets and notification
 	if c.conn != nil {
 		c.conn.Close()
 		c.conn = nil
 	}
+
+	// Wait a bit to give other clients time to upload their files
+	log.Infof("action: waiting_for_other_clients | result: success | client_id: %v", c.config.ID)
+	time.Sleep(c.config.LoopPeriod * 2)
+
+	// Now reconnect to query for winners
+	if c.running {
+		if err := c.queryWinnersWithReconnect(); err != nil {
+			log.Errorf("action: query_winners | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		}
+	}
+
 	c.running = false
 
 	if c.running {
@@ -200,4 +288,25 @@ func (c *Client) StartClientLoop() {
 	} else {
 		log.Infof("action: client_shutdown | result: success | client_id: %v", c.config.ID)
 	}
+}
+
+// queryWinnersWithReconnect reconnects to the server to query for winners
+func (c *Client) queryWinnersWithReconnect() error {
+	// Create a new connection for winner query
+	if err := c.createClientSocket(); err != nil {
+		return fmt.Errorf("failed to reconnect for winner query: %w", err)
+	}
+
+	// Query for winners from this agency
+	if err := c.queryWinners(); err != nil {
+		return fmt.Errorf("failed to query winners: %w", err)
+	}
+
+	// Close the connection after getting winners
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+
+	return nil
 }

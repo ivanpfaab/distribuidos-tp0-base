@@ -5,6 +5,13 @@ import (
 	"github.com/7574-sistemas-distribuidos/docker-compose-init/client/domain"
 )
 
+// Message type constants
+const (
+	MessageTypeBatchBets     = 'B'
+	MessageTypeNotification  = 'N'
+	MessageTypeWinnerQuery   = 'W'
+)
+
 // BetMessage represents a bet submission in simple string format
 type BetMessage struct {
 	AgencyID   int
@@ -30,7 +37,6 @@ func NewBetMessage(agencyID int, nombre, apellido, documento, nacimiento string,
 		Numero:     numero,
 	}
 	
-	// MsgLength is no longer needed since we calculate bet size dynamically in Format()
 	return msg
 }
 
@@ -49,7 +55,6 @@ func NewBatchBetMessage(bets []*domain.Bet) *BatchBetMessage {
 // converts a bet message to the format:
 // <agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>&&
 func (b *BetMessage) Format() string {
-	// Calculate the actual bet message content (without the size prefix)
 	betContent := fmt.Sprintf("%d|%s|%s|%s|%s|%d&&", 
 		b.AgencyID, 
 		b.Nombre, 
@@ -62,20 +67,47 @@ func (b *BetMessage) Format() string {
 }
 
 // Formats batch bet message in the format: 
-// <msg size (8 bytes)><agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>$$<agency id>...
+// <agency id>|<nombre>|<apellido>|<document>|<fecha nacimiento>|<numero>&&<agency id>...
 func (b *BatchBetMessage) FormatBatch() string {
-	// Calculate total message size (sum of all bet message lengths)
-	var totalSize uint32
 	msg := ""
 	for _, bet := range b.Bets {
 		betContent := bet.Format()
-		totalSize += uint32(len(betContent))
 		msg += betContent
 	}
 	
-	// Format message size as 8-byte string (00000000-99999999)
-	sizeStr := fmt.Sprintf("%08d", totalSize)
-	finalMsg := sizeStr + msg
-	
-	return finalMsg
+	return msg
+}
+
+// NotificationMessage represents a completion notification
+type NotificationMessage struct {
+	AgencyID int
+}
+
+// NewNotificationMessage creates a new notification message
+func NewNotificationMessage(agencyID int) *NotificationMessage {
+	return &NotificationMessage{
+		AgencyID: agencyID,
+	}
+}
+
+// Format formats the notification message
+func (n *NotificationMessage) Format() string {
+	return fmt.Sprintf("%d", n.AgencyID)
+}
+
+// WinnerQueryMessage represents a query for winners from a specific agency
+type WinnerQueryMessage struct {
+	AgencyID int
+}
+
+// NewWinnerQueryMessage creates a new winner query message
+func NewWinnerQueryMessage(agencyID int) *WinnerQueryMessage {
+	return &WinnerQueryMessage{
+		AgencyID: agencyID,
+	}
+}
+
+// Format formats the winner query message
+func (w *WinnerQueryMessage) Format() string {
+	return fmt.Sprintf("%d", w.AgencyID)
 }

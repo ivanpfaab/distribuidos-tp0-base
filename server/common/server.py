@@ -4,7 +4,7 @@ import signal
 
 from protocol.message import BetMessage
 from protocol.communication import CommunicationHandler
-from common.utils import store_bets
+from common.utils import store_bets, load_bets, has_won
 
 
 class Server:
@@ -22,6 +22,13 @@ class Server:
         
         # Set socket timeout to allow checking shutdown flag
         self._server_socket.settimeout(1.0)
+        
+        # Track completion notifications from agencies
+        self._completed_agencies = set()
+        self._lottery_conducted = False
+        self._winners_cache = {}  # Cache winners by agency
+        self._active_connections = set()  # Track active client connections
+        self._sending_bets_clients = {}  # Track client_id -> connection_socket mapping
 
     def __init_signals(self):
         """
@@ -54,6 +61,71 @@ class Server:
             logging.error(f'action: cleanup_resources | result: fail | resource: server_socket | error: {e}')
         
         logging.info('action: cleanup_resources | result: success')
+
+    def __handle_notification(self, communication_handler, agency_id):
+        """Handle completion notification from an agency"""
+        try:
+            self._completed_agencies.add(agency_id)
+            logging.info(f'action: agency_completed | result: success | agency_id: {agency_id}')
+            
+            # Don't conduct lottery here - wait for client to disconnect
+            # Send acknowledgment
+            communication_handler.send_notification_response(True)
+            
+        except Exception as e:
+            logging.error(f'action: handle_notification | result: fail | agency_id: {agency_id} | error: {e}')
+            communication_handler.send_notification_response(False)
+
+    def __conduct_lottery(self):
+        """Conduct the lottery and find winners for each agency"""
+        try:
+            logging.info('action: sorteo | result: success')
+            
+            # Load all bets and find winners
+            all_bets = list(load_bets())
+            winners_by_agency = {}
+            
+            for bet in all_bets:
+                if has_won(bet):
+                    if bet.agency not in winners_by_agency:
+                        winners_by_agency[bet.agency] = []
+                    winners_by_agency[bet.agency].append(bet.document)
+            
+            # Cache winners by agency
+            self._winners_cache = winners_by_agency
+            self._lottery_conducted = True
+            
+            logging.info(f'action: lottery_winners_found | result: success | total_winners: {sum(len(winners) for winners in winners_by_agency.values())}')
+            
+        except Exception as e:
+            logging.error(f'action: conduct_lottery | result: fail | error: {e}')
+
+    def __handle_winner_query(self, communication_handler, agency_id):
+        """Handle winner query from an agency"""
+        try:
+            # Check if all active connections have completed sending bets
+            if len(self._completed_agencies) < len(self._active_connections):
+                # Not all active clients have completed yet
+                logging.info(f'action: winner_query | result: waiting | agency_id: {agency_id} | completed: {len(self._completed_agencies)} | active: {len(self._active_connections)}')
+                communication_handler.send_waiting_response()
+                return
+            
+            # All active clients have completed, proceed with lottery if not done yet
+            if not self._lottery_conducted:
+                self.__conduct_lottery()
+            
+            # Send winners to this agency
+            if agency_id in self._winners_cache:
+                winners = self._winners_cache[agency_id]
+            else:
+                winners = []
+            
+            communication_handler.send_winner_list(winners)
+            logging.info(f'action: winner_query | result: success | agency_id: {agency_id} | winners_count: {len(winners)}')
+            
+        except Exception as e:
+            logging.error(f'action: handle_winner_query | result: fail | agency_id: {agency_id} | error: {e}')
+            communication_handler.send_waiting_response()
 
     def run(self):
         """
@@ -91,24 +163,39 @@ class Server:
             # Create communication handler
             communication_handler = CommunicationHandler(client_sock)
             
+            # Track this connection
+            self._active_connections.add(client_sock)
+            
             # Keep connection open to handle multiple messages from the same client
             while True:
                 try:
-                    # Receive message from client - this returns a list of Bet objects
-                    bets = communication_handler.receive_message()
-                    bets_stored = 0
+                    # Receive message from client - this returns a dict with message type and data
+                    message_data = communication_handler.receive_message()
                     
-                    # Process each bet object
-                    for bet in bets:
-                        if bet:
-                            # Store the bet using the store_bets function
-                            store_bets([bet])
-                            bets_stored += 1
-                    
-                    # Send success response to client
-                    # first number is the total number of bets
-                    # second number is the number of bets stored
-                    communication_handler.send_response(len(bets), bets_stored)
+                    if message_data["type"] == "notification":
+                        # Handle completion notification
+                        self.__handle_notification(communication_handler, message_data["agency_id"])
+                        
+                    elif message_data["type"] == "winner_query":
+                        # Handle winner query
+                        self.__handle_winner_query(communication_handler, message_data["agency_id"])
+                        
+                    elif message_data["type"] == "batch_bets":
+                        # Handle batch bet submission
+                        bets = message_data["bets"]
+                        bets_stored = 0
+                        
+                        # Process each bet object
+                        for bet in bets:
+                            if bet:
+                                # Store the bet using the store_bets function
+                                store_bets([bet])
+                                bets_stored += 1
+                        
+                        # Send success response to client
+                        # first number is the total number of bets
+                        # second number is the number of bets stored
+                        communication_handler.send_response(len(bets), bets_stored)
                     
                 except ConnectionResetError as e:
                     # Client has finished sending all data and closed connection
@@ -125,7 +212,24 @@ class Server:
             logging.error(f"action: handle_client | result: fail | ip: {addr} | error: {e}")
             
         finally:
-            # Only close connection when client disconnects or there's a fatal error
+            # Remove from active connections and close
+            self._active_connections.discard(client_sock)
+            
+            # Find and remove this client from connected_clients
+            client_id_to_remove = None
+            for client_id, sock in self._sending_bets_clients.items():
+                if sock == client_sock:
+                    client_id_to_remove = client_id
+                    break
+            
+            if client_id_to_remove:
+                del self._sending_bets_clients[client_id_to_remove]
+                logging.info(f'action: client_sent_all_bets | result: success | client_id: {client_id_to_remove}')
+            
+            # Check if all clients have been processed (disconnected)
+            if len(self._sending_bets_clients) == 0:
+                self.__conduct_lottery()
+            
             communication_handler.close()
 
     def __accept_new_connection(self):
@@ -140,4 +244,13 @@ class Server:
         logging.info('action: accept_connections | result: in_progress')
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+        
+        # Assign a unique client ID and track this connection
+        client_id = addr[0]
+        self._sending_bets_clients[client_id] = c
+        logging.info(f'action: new_client_connected | result: success | client_number: {client_id}')
+        
+        # Track this connection
+        self._active_connections.add(c)
+        
         return c
