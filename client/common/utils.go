@@ -26,6 +26,7 @@ func (c *CSVChunkReader) ReadChunk(x int) ([][]string, error) {
   
   var lines [][]string
   
+  // Read exactly x lines, or until EOF
   for i := 0; i < x; i++ {
       record, err := c.reader.Read()
       if err == io.EOF {

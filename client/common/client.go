@@ -99,7 +99,7 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 		log.Infof("action: apuesta_recibida | result: success | cantidad: %d", len(bets))
 	} else {
 		log.Errorf("action: apuesta_recibida | result: fail | cantidad: %d", ack)
-		return fmt.Errorf("acknowledgment mismatch: expected %d, got %d", len(bets), ack)
+		return fmt.Errorf("server returned non-positive response: %d", ack)
 	}
 
 	return nil
@@ -142,18 +142,15 @@ func (c *Client) StartClientLoop() {
 		return
 	}
 
-	// There is an autoincremental msgID to identify every message sent
-	// Messages if the message amount threshold has not been surpassed
-	for msgID := 1; chunkReader.HasMore() && c.running; msgID++ {
-
+	// Process data in chunks incrementally - read chunk, send it, then read next chunk
+	for chunkReader.HasMore() && c.running {
+		// Read a chunk of the configured batch size
 		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount)
-
-		//Check error handling with exercise requirements
 		if err != nil && err != io.EOF {
 			log.Errorf("action: read_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
 			return
 		}
-
+		
 		if err == io.EOF {
 			break
 		}
@@ -182,9 +179,11 @@ func (c *Client) StartClientLoop() {
 		time.Sleep(c.config.LoopPeriod)
 	}
 
-	// Close connection after submission
-	c.conn.Close()
-	c.conn = nil
+	// Close connection only after all bets have been processed
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
 	c.running = false
 
 	if c.running {
