@@ -23,6 +23,10 @@ class Server:
         self._lottery_lock = threading.Lock()
         self._storage_lock = threading.Lock()
         
+        # Track active client threads for graceful shutdown
+        self._active_threads = set()
+        self._threads_lock = threading.Lock()
+        
         # Set up signal handlers ONCE during initialization
         self.__init_signals()
         
@@ -59,10 +63,26 @@ class Server:
         logging.info('action: cleanup_resources | result: in_progress')
         
         try:
+            # Wait for all active client threads to finish
+            with self._threads_lock:
+                active_threads = list(self._active_threads)
+            
+            if active_threads:
+                logging.info(f'action: cleanup_resources | result: waiting_for_threads | active: {len(active_threads)}')
+                
+                # Wait for each thread to finish (with timeout)
+                for thread in active_threads:
+                    thread.join()  
+                    if thread.is_alive():
+                        logging.warning(f'action: cleanup_resources | result: thread_timeout | thread: {thread.name}')
+                    else:
+                        logging.info(f'action: cleanup_resources | result: thread_finished | thread: {thread.name}')
+            
             # Close server socket
             if hasattr(self, '_server_socket') and self._server_socket:
                 self._server_socket.close()
                 logging.info('action: cleanup_resources | result: success | resource: server_socket')
+                
         except Exception as e:
             logging.error(f'action: cleanup_resources | result: fail | error: {e}')
         
@@ -163,8 +183,14 @@ class Server:
                         client_thread = threading.Thread(
                             target=self.__handle_client_connection, 
                             args=(client_sock,),
-                            daemon=True
+                            daemon=False,  # Non-daemon so we can wait for it
+                            name=f"ClientHandler-{client_sock.getpeername()[0]}"
                         )
+                        
+                        # Track the thread for graceful shutdown
+                        with self._threads_lock:
+                            self._active_threads.add(client_thread)
+                        
                         client_thread.start()
                         
                 except socket.timeout:
@@ -177,7 +203,6 @@ class Server:
                     
         finally:
             logging.info('action: server_shutdown | result: in_progress')
-            client_threads.join()
             self.__cleanup_resources()
             logging.info('action: server_shutdown | result: success')
 
@@ -194,7 +219,7 @@ class Server:
                 self._active_connections.add(client_sock)
             
             # Keep connection open to handle multiple messages from the same client
-            while True:
+            while self._running:  # Check shutdown flag
                 try:
                     # Receive message from client - this returns a dict with message type and data
                     message_data = communication_handler.receive_message()
@@ -258,6 +283,10 @@ class Server:
                 # Check if all clients have been processed (disconnected)
                 if len(self._sending_bets_clients) == 0:
                     self.__conduct_lottery()
+            
+            # Remove this thread from active threads
+            with self._threads_lock:
+                self._active_threads.discard(threading.current_thread())
             
             communication_handler.close()
 
