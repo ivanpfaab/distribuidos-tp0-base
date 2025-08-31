@@ -181,6 +181,7 @@ func (c *Client) StartClientLoop() {
 	// Close connection after submission
 	c.conn.Close()
 	c.conn = nil
+	c.running = false
 	
 	if c.running {
 		log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)

@@ -91,37 +91,32 @@ class Server:
             # Create communication handler
             communication_handler = CommunicationHandler(client_sock)
             
-            # Keep connection open to handle multiple batches
-            while True:
-                try:
-                    # Receive message from client - this returns a list of Bet objects
-                    bets = communication_handler.receive_message()
-                    bets_stored = 0
-
-                    logging.debug(f"action: handle_client | result: success | bets: {bets}")
-                    
-                    # Process each bet object
-                    for bet in bets:
-                        if bet:
-                            # Store the bet using the store_bets function
-                            store_bets([bet])
-                            bets_stored += 1
-                            # Log successful bet storage
-                            logging.debug(f'action: apuesta_almacenada | result: success | dni: {bet.document} | numero: {bet.number}')
-                    
-                    # Send success response to client
-                    # first number is the total number of bets
-                    # second number is the number of bets stored
-                    communication_handler.send_response(len(bets), bets_stored)
-                    
-                except ConnectionResetError as e:
-                    # Client has finished sending all data and closed connection
-                    # This is normal behavior, not an error
-                    break
-                except Exception as e:
-                    # Client disconnected - this is normal when they finish sending data
-                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
-                    break
+            try:
+                # Receive message from client - this returns a list of Bet objects
+                bets = communication_handler.receive_message()
+                bets_stored = 0
+                
+                # Process each bet object
+                for bet in bets:
+                    if bet:
+                        # Store the bet using the store_bets function
+                        store_bets([bet])
+                        bets_stored += 1
+                
+                # Send success response to client
+                # first number is the total number of bets
+                # second number is the number of bets stored
+                communication_handler.send_response(len(bets), bets_stored)
+                
+            except ConnectionResetError as e:
+                # Client has finished sending all data and closed connection
+                # This is normal behavior, not an error
+                logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
+                #break
+            except Exception as e:
+                # Client disconnected - this is normal when they finish sending data
+                logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
+                #break
                     
         except Exception as e:
             addr = client_sock.getpeername() if client_sock else "unknown"

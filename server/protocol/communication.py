@@ -51,7 +51,6 @@ class CommunicationHandler:
         for bet_str in bets_str:
             # Parse individual bet message
             try:
-                logging.info(f"Attempting to parse bet message: {repr(bet_str)}")
                 bet = BetMessage.bet_from_string(bet_str)
                 bets.append(bet)
                 
