@@ -142,7 +142,7 @@ func (c *Client) StartClientLoop() {
 		return
 	}
 
-	// Process data in batches according to MaxBatchAmount
+	// Process data in batches 
 	var currentBatch [][]string
 	
 	for chunkReader.HasMore() && c.running {

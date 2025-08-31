@@ -62,8 +62,10 @@ class CommunicationHandler:
     def send_response(self, total_bets, stored_bets):
         """Send a simple response to the client"""
         try:
-            # Always send the number of stored bets
-            logging.info(f'action: apuesta_recibida | result: success | cantidad: {stored_bets}')
+            # Check the status depending on how many bets were stored
+            execution_status = "success" if total_bets == stored_bets else "fail"
+            logging.info(f'action: apuesta_recibida | result: {execution_status} | cantidad: {stored_bets}')
+            
             full_response = str(stored_bets) + "\n"
             self.conn.send(full_response.encode('utf-8'))
         except Exception as e:
