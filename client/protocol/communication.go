@@ -34,9 +34,6 @@ func NewCommunicationHandler(conn net.Conn) *CommunicationHandler {
 
 // SendBatchBets sends a batch of bets to the server
 func (ch *CommunicationHandler) SendBatchBets(content string) error {
-	if content == "" {
-		return fmt.Errorf("batch content cannot be empty")
-	}
 	return ch.SendMessage(MessageTypeBatchBets, content)
 }
 
