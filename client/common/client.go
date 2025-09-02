@@ -60,7 +60,42 @@ func NewClient(config ClientConfig) *Client {
 	return client
 }
 
-// CreateClientSocket Initializes client socket. In case of
+
+// establishConnection attempts to establish a connection with retry logic
+func (c *Client) establishConnection() error {
+	for attempt := 0; attempt < c.config.LoopAmount; attempt++ {
+		if err := c.createClientSocket(); err != nil {
+			log.Errorf("action: create_socket | result: fail | client_id: %v | attempt: %d/%d | error: %v", 
+				c.config.ID, attempt+1, c.config.LoopAmount, err)
+			
+			if attempt < c.config.LoopAmount-1 {
+				time.Sleep(c.config.LoopPeriod)
+				continue
+			}
+			return fmt.Errorf("max retries reached: %w", err)
+		}
+
+		// Check if connection was created successfully
+		if c.conn == nil {
+			log.Errorf("action: create_socket | result: fail | client_id: %v | attempt: %d/%d | error: connection is nil", 
+				c.config.ID, attempt+1, c.config.LoopAmount)
+			
+			if attempt < c.config.LoopAmount-1 {
+				time.Sleep(c.config.LoopPeriod)
+				continue
+			}
+			return fmt.Errorf("max retries reached: connection is nil")
+		}
+
+		log.Infof("action: create_socket | result: success | client_id: %v | attempt: %d/%d", 
+			c.config.ID, attempt+1, c.config.LoopAmount)
+		return nil
+	}
+	
+	return fmt.Errorf("max retries reached")
+}
+
+// createClientSocket Initializes client socket. In case of
 // failure, error is printed in stdout/stderr and exit 1
 // is returned
 func (c *Client) createClientSocket() error {
@@ -77,8 +112,98 @@ func (c *Client) createClientSocket() error {
 	return nil
 }
 
+
+// StartClientLoop Send messages to the client until some time threshold is met
+func (c *Client) StartClientLoop() {
+
+	file, err := os.Open(c.config.FilePath)
+	if err != nil {
+		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	defer file.Close()
+	chunkReader := NewCSVChunkReader(file)
+
+	if err := c.establishConnection(); err != nil {
+		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v", c.config.ID, err)
+		return
+	}
+
+	// Process data in batches
+	c.processBatches(chunkReader)
+
+	// Close connection only after all bets have been processed
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+	c.running = false
+
+	log.Infof("action: client_shutdown | result: success | client_id: %v", c.config.ID)
+}
+
+// processBatches processes data in batches from the CSV reader
+func (c *Client) processBatches(chunkReader *CSVChunkReader) {
+	var currentBatch [][]string
+	
+	for chunkReader.HasMore() && c.running {
+		// Read a chunk and add to current batch
+		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount) 
+		if err != nil && err != io.EOF {
+			log.Errorf("action: read_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
+			return
+		}
+		
+		if err == io.EOF {
+			break
+		}
+		
+		// Add chunk to current batch
+		currentBatch = append(currentBatch, chunk...)
+		
+		// If we've reached MaxBatchAmount or there's no more data, process the batch
+		if len(currentBatch) >= c.config.MaxBatchAmount || !chunkReader.HasMore() {
+			if err := c.processBatch(currentBatch); err != nil {
+				log.Errorf("action: process_batch | result: fail | client_id: %v | error: %v", c.config.ID, err)
+				// Continue processing other batches even if one fails
+			}
+
+			// Clear current batch and wait before next batch
+			currentBatch = currentBatch[:0]
+			time.Sleep(c.config.LoopPeriod)
+		}
+	}
+}
+
+// processBatch processes a single batch of bets
+func (c *Client) processBatch(batch [][]string) error {
+	// Convert client ID to integer for agency ID
+	agencyID, err := strconv.Atoi(c.config.ID)
+	if err != nil {
+		return fmt.Errorf("invalid client ID format: %w", err)
+	}
+	
+	bets, err := domain.BetsFromChunk(batch, agencyID)
+	if err != nil {
+		return fmt.Errorf("failed to parse batch: %w", err)
+	}
+
+	// Submit bets using batch request
+	if err := c.submitBets(bets); err != nil {
+		return fmt.Errorf("failed to submit batch: %w", err)
+	}
+
+	return nil
+}
+
 // submitBet submits a bet to the server using the simple string protocol
 func (c *Client) submitBets(bets []*domain.Bet) error {
+	
+	if c.conn == nil {
+		return fmt.Errorf("no active connection to server")
+	}
+
 	// Create communication handler
 	commHandler := protocol.NewCommunicationHandler(c.conn)
 
@@ -103,101 +228,4 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 	}
 
 	return nil
-}
-
-// StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
-
-	file, err := os.Open(c.config.FilePath)
-	if err != nil {
-		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		return
-	}
-
-	defer file.Close()
-	chunkReader := NewCSVChunkReader(file)
-
-	loopCount := 0
-	for ; loopCount < c.config.LoopAmount; loopCount++ {
-		// Create the connection to the server
-		if err := c.createClientSocket(); err != nil {
-			log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			// Wait before retrying
-			time.Sleep(c.config.LoopPeriod)
-			continue
-		}
-
-		// Check if connection was created successfully
-		if c.conn == nil {
-			log.Errorf("action: create_socket | result: fail | client_id: %v | error: connection is nil", c.config.ID, err)
-			time.Sleep(c.config.LoopPeriod)
-			continue
-		}
-
-		break
-	}
-
-	if loopCount >= c.config.LoopAmount {
-		log.Errorf("action: create_socket | result: fail | client_id: %v | error: max retries reached", c.config.ID)
-		return
-	}
-
-	// Process data in batches 
-	var currentBatch [][]string
-	
-	for chunkReader.HasMore() && c.running {
-		// Read a chunk and add to current batch
-		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount) 
-		if err != nil && err != io.EOF {
-			log.Errorf("action: read_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return
-		}
-		
-		if err == io.EOF {
-			break
-		}
-		
-		// Add chunk to current batch
-		currentBatch = append(currentBatch, chunk...)
-		
-		// If we've reached MaxBatchAmount or there's no more data, process the batch
-		if len(currentBatch) >= c.config.MaxBatchAmount || !chunkReader.HasMore() {
-			// Convert client ID to integer for agency ID
-			agencyID, err := strconv.Atoi(c.config.ID)
-			if err != nil {
-				log.Errorf("action: parse_client_id | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return
-			}
-			
-			bets, err := domain.BetsFromChunk(currentBatch, agencyID)
-			if err != nil {
-				log.Errorf("action: parse_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				return
-			}
-
-			// Submit bets using batch request
-			if err := c.submitBets(bets); err != nil {
-				log.Errorf("action: submit_bet | result: fail | client_id: %v | error: %v", c.config.ID, err)
-				time.Sleep(c.config.LoopPeriod)
-				continue
-			}
-
-			// Clear current batch and wait before next batch
-			currentBatch = currentBatch[:0]
-			time.Sleep(c.config.LoopPeriod)
-		}
-	}
-
-	// Close connection only after all bets have been processed
-	if c.conn != nil {
-		c.conn.Close()
-		c.conn = nil
-	}
-	c.running = false
-
-	if c.running {
-		log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
-	} else {
-		log.Infof("action: client_shutdown | result: success | client_id: %v", c.config.ID)
-	}
 }
