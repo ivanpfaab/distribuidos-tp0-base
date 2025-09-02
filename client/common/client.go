@@ -130,7 +130,7 @@ func (c *Client) submitBets(bets []*domain.Bet) error {
 	}
 
 	// Receive response
-	ack, err := commHandler.ReceiveMessage()
+	ack, err := commHandler.ReceiveBatchResponse()
 	if err != nil {
 		return fmt.Errorf("failed to receive response: %w", err)
 	}
