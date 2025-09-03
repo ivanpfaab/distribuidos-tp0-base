@@ -5,6 +5,7 @@ import signal
 from protocol.message import BetMessage
 from protocol.communication import CommunicationHandler
 from common.utils import store_bets, load_bets, has_won
+from domain.lottery import Lottery
 
 
 class Server:
@@ -25,10 +26,11 @@ class Server:
         
         # Track completion notifications from agencies
         self._completed_agencies = set()
-        self._lottery_conducted = False
-        self._winners_cache = {}  # Cache winners by agency
         self._active_connections = set()  # Track active client connections
         self._sending_bets_clients = {}  # Track client_id -> connection_socket mapping
+        
+        # Initialize lottery
+        self._lottery = Lottery()
 
     def __init_signals(self):
         """
@@ -78,27 +80,7 @@ class Server:
 
     def __conduct_lottery(self):
         """Conduct the lottery and find winners for each agency"""
-        try:
-            logging.info('action: sorteo | result: success')
-            
-            # Load all bets and find winners
-            all_bets = list(load_bets())
-            winners_by_agency = {}
-            
-            for bet in all_bets:
-                if has_won(bet):
-                    if bet.agency not in winners_by_agency:
-                        winners_by_agency[bet.agency] = []
-                    winners_by_agency[bet.agency].append(bet.document)
-            
-            # Cache winners by agency
-            self._winners_cache = winners_by_agency
-            self._lottery_conducted = True
-            
-            logging.info(f'action: lottery_winners_found | result: success | total_winners: {sum(len(winners) for winners in winners_by_agency.values())}')
-            
-        except Exception as e:
-            logging.error(f'action: conduct_lottery | result: fail | error: {e}')
+        self._lottery.conduct_lottery()
 
     def __handle_winner_query(self, communication_handler, agency_id):
         """Handle winner query from an agency"""
@@ -111,14 +93,11 @@ class Server:
                 return
             
             # All active clients have completed, proceed with lottery if not done yet
-            if not self._lottery_conducted:
+            if not self._lottery.is_lottery_conducted():
                 self.__conduct_lottery()
             
             # Send winners to this agency
-            if agency_id in self._winners_cache:
-                winners = self._winners_cache[agency_id]
-            else:
-                winners = []
+            winners = self._lottery.get_winners_for_agency(agency_id)
             
             communication_handler.send_winner_list(winners)
             logging.info(f'action: winner_query | result: success | agency_id: {agency_id} | winners_count: {len(winners)}')
