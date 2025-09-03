@@ -99,7 +99,14 @@ class CommunicationHandler:
         try:
             size_str = f"{len(content):08d}"
             full_message = msg_type + size_str + content
-            self.conn.send(full_message.encode('utf-8'))
+            message_bytes = full_message.encode('utf-8')
+            
+            
+            written_bytes = 0
+            while written_bytes < len(message_bytes):
+                sent = self.conn.send(message_bytes[written_bytes:])
+                written_bytes += sent
+                
         except Exception as e:
             raise Exception(f"Failed to send message: {e}")
     
