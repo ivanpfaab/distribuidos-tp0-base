@@ -167,16 +167,21 @@ class Server:
         
                     if message_type == "notification":
                         self.__handle_notification(communication_handler, message_data["agency_id"])
+                        # Client will close connection after receiving notification response
+                        break
                     elif message_type == "winner_query":
                         self.__handle_winner_query(communication_handler, message_data["agency_id"])
+                        # Client will close connection after receiving winner list
+                        break
                     elif message_type == "batch_bets":
                         self.__handle_batch_bets(communication_handler, message_data["bets"])
+                        # Continue to handle more batch messages from this client
                     else:
                         logging.warning(f'action: process_message | result: unknown_type | message_type: {message_type}')
                     
-                except ConnectionResetError:
-                    # Client has finished sending all data and closed connection
-                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
+                except Exception as e:
+                    # Handle other errors during message processing
+                    logging.error(f"action: process_message | result: fail | error: {e}")
                     break
                     
         except Exception as e:
