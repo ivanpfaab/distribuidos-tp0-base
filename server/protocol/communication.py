@@ -103,7 +103,7 @@ class CommunicationHandler:
         except Exception as e:
             raise Exception(f"Failed to send message: {e}")
     
-    def send_response(self, total_bets, stored_bets):
+    def send_batch_response(self, total_bets, stored_bets):
         """Send a response to batch bet submission"""
         try:
             # Check the status depending on how many bets were stored

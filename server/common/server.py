@@ -27,7 +27,6 @@ class Server:
         # Track completion notifications from agencies
         self._completed_agencies = set()
         self._active_connections = set()  # Track active client connections
-        self._sending_bets_clients = {}  # Track client_id -> connection_socket mapping
         
         # Initialize lottery
         self._lottery = Lottery()
@@ -46,6 +45,7 @@ class Server:
         This sets the shutdown flag instead of immediately exiting
         """
         logging.info(f'action: signal_received | result: success | signal: {signum}')
+        self.__cleanup_resources()
         self._running = False
 
     def __cleanup_resources(self):
@@ -59,10 +59,32 @@ class Server:
             if hasattr(self, '_server_socket') and self._server_socket:
                 self._server_socket.close()
                 logging.info('action: cleanup_resources | result: success | resource: server_socket')
+            # Close all client connections
+            for client_sock in self._active_connections:
+                client_sock.close()
+                logging.info('action: cleanup_resources | result: success | resource: client_socket')
         except Exception as e:
             logging.error(f'action: cleanup_resources | result: fail | resource: server_socket | error: {e}')
         
         logging.info('action: cleanup_resources | result: success')
+
+    def __handle_remove_client_connection(self, client_sock, communication_handler):
+        """Remove client connection and clean up resources"""
+        # Remove from active connections
+        self._active_connections.discard(client_sock)
+        
+        # Log client disconnection
+        try:
+            client_id = client_sock.getpeername()[0]
+            logging.info(f'action: client_sent_all_bets | result: success | client_id: {client_id}')
+        except:
+            logging.info(f'action: client_sent_all_bets | result: success | client_id: unknown')
+        
+        # Check if all clients have been processed (disconnected)
+        if len(self._active_connections) == 0:
+            self._lottery.conduct_lottery()
+        
+        communication_handler.close()
 
     def __handle_notification(self, communication_handler, agency_id):
         """Handle completion notification from an agency"""
@@ -78,10 +100,6 @@ class Server:
             logging.error(f'action: handle_notification | result: fail | agency_id: {agency_id} | error: {e}')
             communication_handler.send_notification_response(False)
 
-    def __conduct_lottery(self):
-        """Conduct the lottery and find winners for each agency"""
-        self._lottery.conduct_lottery()
-
     def __handle_winner_query(self, communication_handler, agency_id):
         """Handle winner query from an agency"""
         try:
@@ -94,7 +112,7 @@ class Server:
             
             # All active clients have completed, proceed with lottery if not done yet
             if not self._lottery.is_lottery_conducted():
-                self.__conduct_lottery()
+                self._lottery.conduct_lottery()
             
             # Send winners to this agency
             winners = self._lottery.get_winners_for_agency(agency_id)
@@ -106,33 +124,26 @@ class Server:
             logging.error(f'action: handle_winner_query | result: fail | agency_id: {agency_id} | error: {e}')
             communication_handler.send_waiting_response()
 
-    def run(self):
-        """
-        Dummy Server loop
-
-        Server that accept a new connections and establishes a
-        communication with a client. After client with communucation
-        finishes, servers starts to accept new connections again
-        """
-        logging.info('action: server_start | result: success')
-        
+    def __handle_batch_bets(self, communication_handler, bets):
+        """Handle batch bet submission from a client"""
         try:
-            while self._running: # This is the main loop of the server, waiting for new connections
-                try:
-                    client_sock = self.__accept_new_connection()
-                    if client_sock:
-                        self.__handle_client_connection(client_sock)
-                except socket.timeout:
-                    # Timeout allows checking shutdown flag - this is normal behavior, just continue
-                    continue
-                except Exception as e:
-                    # Client disconnected - this is normal when they finish sending data
-                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
-                    break
-        finally:
-            logging.info('action: server_shutdown | result: in_progress')
-            self.__cleanup_resources()
-            logging.info('action: server_shutdown | result: success')
+            bets_stored = 0
+            
+            # Process each bet object
+            for bet in bets:
+                if bet:
+                    # Store the bet using the store_bets function
+                    store_bets([bet])
+                    bets_stored += 1
+            
+            # Send success response to client
+            # first number is the total number of bets
+            # second number is the number of bets stored
+            communication_handler.send_batch_response(len(bets), bets_stored)
+            
+        except Exception as e:
+            logging.error(f'action: handle_batch_bets | result: fail | error: {e}')
+            communication_handler.send_batch_response(0, 0)
 
     def __handle_client_connection(self, client_sock):
         """
@@ -151,38 +162,20 @@ class Server:
                     # Receive message from client - this returns a dict with message type and data
                     message_data = communication_handler.receive_message()
                     
-                    if message_data["type"] == "notification":
-                        # Handle completion notification
+                    # Process the message
+                    message_type = message_data["type"]
+        
+                    if message_type == "notification":
                         self.__handle_notification(communication_handler, message_data["agency_id"])
-                        
-                    elif message_data["type"] == "winner_query":
-                        # Handle winner query
+                    elif message_type == "winner_query":
                         self.__handle_winner_query(communication_handler, message_data["agency_id"])
-                        
-                    elif message_data["type"] == "batch_bets":
-                        # Handle batch bet submission
-                        bets = message_data["bets"]
-                        bets_stored = 0
-                        
-                        # Process each bet object
-                        for bet in bets:
-                            if bet:
-                                # Store the bet using the store_bets function
-                                store_bets([bet])
-                                bets_stored += 1
-                        
-                        # Send success response to client
-                        # first number is the total number of bets
-                        # second number is the number of bets stored
-                        communication_handler.send_response(len(bets), bets_stored)
+                    elif message_type == "batch_bets":
+                        self.__handle_batch_bets(communication_handler, message_data["bets"])
+                    else:
+                        logging.warning(f'action: process_message | result: unknown_type | message_type: {message_type}')
                     
-                except ConnectionResetError as e:
+                except ConnectionResetError:
                     # Client has finished sending all data and closed connection
-                    # This is normal behavior, not an error
-                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
-                    break
-                except Exception as e:
-                    # Client disconnected - this is normal when they finish sending data
                     logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
                     break
                     
@@ -191,25 +184,8 @@ class Server:
             logging.error(f"action: handle_client | result: fail | ip: {addr} | error: {e}")
             
         finally:
-            # Remove from active connections and close
-            self._active_connections.discard(client_sock)
-            
-            # Find and remove this client from connected_clients
-            client_id_to_remove = None
-            for client_id, sock in self._sending_bets_clients.items():
-                if sock == client_sock:
-                    client_id_to_remove = client_id
-                    break
-            
-            if client_id_to_remove:
-                del self._sending_bets_clients[client_id_to_remove]
-                logging.info(f'action: client_sent_all_bets | result: success | client_id: {client_id_to_remove}')
-            
-            # Check if all clients have been processed (disconnected)
-            if len(self._sending_bets_clients) == 0:
-                self.__conduct_lottery()
-            
-            communication_handler.close()
+            # Clean up client connection
+            self.__handle_remove_client_connection(client_sock, communication_handler)
 
     def __accept_new_connection(self):
         """
@@ -224,12 +200,38 @@ class Server:
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         
-        # Assign a unique client ID and track this connection
-        client_id = addr[0]
-        self._sending_bets_clients[client_id] = c
-        logging.info(f'action: new_client_connected | result: success | client_number: {client_id}')
-        
         # Track this connection
         self._active_connections.add(c)
         
+        # Log client connection
+        client_id = addr[0]
+        logging.info(f'action: new_client_connected | result: success | client_number: {client_id}')
+        
         return c
+
+    def run(self):
+        """
+        Dummy Server loop
+
+        Server that accept a new connections and establishes a
+        communication with a client. After client with communucation
+        finishes, servers starts to accept new connections again
+        """
+        logging.info('action: server_start | result: success')
+        
+        try:
+            while self._running: # This is the main loop of the server, waiting for new connections
+                try:
+                    client_sock = self.__accept_new_connection()
+                    if client_sock:
+                        self.__handle_client_connection(client_sock)
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    # Client disconnected
+                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
+                    break
+        finally:
+            logging.info('action: server_shutdown | result: in_progress')
+            self.__cleanup_resources()
+            logging.info('action: server_shutdown | result: success')
