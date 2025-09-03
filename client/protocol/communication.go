@@ -28,10 +28,6 @@ func NewCommunicationHandler(conn net.Conn) *CommunicationHandler {
 	}
 }
 
-// ============================================================================
-// SEND MESSAGES
-// ============================================================================
-
 // SendBatchBets sends a batch of bets to the server
 func (ch *CommunicationHandler) SendBatchBets(content string) error {
 	return ch.SendMessage(MessageTypeBatchBets, content)
@@ -83,14 +79,10 @@ func (ch *CommunicationHandler) SendMessage(msgType byte, content string) error 
 	return nil
 }
 
-// ============================================================================
-// RECEIVE MESSAGES
-// ============================================================================
-
 // ReceiveBatchResponse receives a batch bet response from the server
 // Expects message type 'R' and returns the parsed response count
 func (ch *CommunicationHandler) ReceiveBatchResponse() (int, error) {
-	msgType, content, err := ch.InterpretMessage()
+	msgType, content, err := ch.Read()
 	if err != nil {
 		return -1, fmt.Errorf("failed to receive batch response: %w", err)
 	}
@@ -107,7 +99,7 @@ func (ch *CommunicationHandler) ReceiveBatchResponse() (int, error) {
 // ReceiveNotificationResponse receives a notification acknowledgment from the server
 // Expects message type 'A' and returns the acknowledgment status
 func (ch *CommunicationHandler) ReceiveNotificationResponse() (bool, error) {
-	msgType, content, err := ch.InterpretMessage()
+	msgType, content, err := ch.Read()
 	if err != nil {
 		return false, fmt.Errorf("failed to receive notification response: %w", err)
 	}
@@ -130,7 +122,7 @@ func (ch *CommunicationHandler) ReceiveNotificationResponse() (bool, error) {
 // ReceiveWinnerList receives a winner list from the server
 // Expects message type 'W' for winner list or 'T' for waiting response
 func (ch *CommunicationHandler) ReceiveWinnerList() ([]string, error) {
-	msgType, content, err := ch.InterpretMessage()
+	msgType, content, err := ch.Read()
 	if err != nil {
 		return nil, fmt.Errorf("failed to receive winner list: %w", err)
 	}
@@ -153,9 +145,8 @@ func (ch *CommunicationHandler) ReceiveWinnerList() ([]string, error) {
 	}
 }
 
-
-// InterpretMessage receives a message using the new protocol format: <type><size><content>
-func (ch *CommunicationHandler) InterpretMessage() (byte, string, error) {
+// Read receives a message using the new protocol format: <type><size><content>
+func (ch *CommunicationHandler) Read() (byte, string, error) {
 	if ch.conn == nil {
 		return 0, "", fmt.Errorf("connection is nil")
 	}
@@ -183,8 +174,7 @@ func (ch *CommunicationHandler) InterpretMessage() (byte, string, error) {
 		readBytes += n
 	}
 	
-	var totalSize int
-	_, err := fmt.Sscanf(string(sizeBuffer), "%d", &totalSize)
+	totalSize, err := strconv.Atoi(string(sizeBuffer))
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to parse message size: %w", err)
 	}
@@ -208,10 +198,6 @@ func (ch *CommunicationHandler) InterpretMessage() (byte, string, error) {
 	return msgType, content, nil
 }
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
 // ParseResponse parses a simple response from the server
 func ParseResponse(response string) (int, error) {
 	if len(response) == 0 {
@@ -231,10 +217,6 @@ func ParseResponse(response string) (int, error) {
 
 	return numericResponse, err
 }
-
-// ============================================================================
-// CLEANUP METHODS
-// ============================================================================
 
 // Close closes the underlying connection
 func (ch *CommunicationHandler) Close() error {
