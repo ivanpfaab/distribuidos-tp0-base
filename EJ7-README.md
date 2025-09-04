@@ -51,15 +51,50 @@ Se implementó un protocolo robusto con prefijo de tipo y tamaño:
 <message_type_byte><msg_size_8_bytes><message_content>
 ```
 
-#### Tipos de Mensaje
-- **'B' (Batch Bets)**: Envío de apuestas en lote
-- **'N' (Notification)**: Notificación de finalización
-- **'W' (Winner Query)**: Consulta de ganadores
-- **'R' (Response)**: Respuesta a batch de apuestas
-- **'A' (Acknowledgment)**: Confirmación de notificación
-- **'W' (Winners)**: Lista de ganadores
-- **'T' (Waiting)**: Servidor esperando otros clientes
-- **'D' (Documents)**: Lista de documentos de la agencia
+**Componentes:**
+- `message_type_byte`: 1 byte que identifica el tipo de mensaje
+- `msg_size_8_bytes`: 8 bytes que indican el tamaño del contenido (formato: "00000000"-"99999999")
+- `message_content`: Contenido real del mensaje (máximo 8KB)
+
+#### Tipos de Mensaje del Cliente al Servidor
+
+| Tipo | Código | Descripción | Contenido |
+|------|--------|-------------|-----------|
+| **Batch Bets** | `'B'` | Envío de apuestas en lote | `<agency_id>|<nombre>|<apellido>|<documento>|<nacimiento>|<numero>&&...` |
+| **Notification** | `'N'` | Notificación de finalización | `<agency_id>` |
+| **Winner Query** | `'W'` | Consulta de ganadores | `<agency_id>` |
+
+#### Tipos de Mensaje del Servidor al Cliente
+
+| Tipo | Código | Descripción | Contenido |
+|------|--------|-------------|-----------|
+| **Response** | `'R'` | Respuesta a batch de apuestas | `<cantidad_almacenada>` |
+| **Acknowledgment** | `'A'` | Confirmación de notificación | `"1"` (éxito) o `"0"` (fallo) |
+| **Winners** | `'W'` | Lista de ganadores | `<dni1>,<dni2>,<dni3>...` (vacío si no hay ganadores) |
+| **Waiting** | `'T'` | Servidor esperando otros clientes | `"waiting"` |
+
+### 2. Flujo de Interacción Detallado
+
+#### Fase 1: Envío de Apuestas
+```
+Cliente → Servidor: 'B' + tamaño + contenido_batch
+Servidor → Cliente: 'R' + cantidad_almacenada
+```
+
+#### Fase 2: Notificación de Finalización
+```
+Cliente → Servidor: 'N' + agency_id
+Servidor → Cliente: 'A' + "1" (confirmación)
+Cliente: Desconecta
+```
+
+#### Fase 3: Consulta de Ganadores
+```
+Cliente: Reconecta
+Cliente → Servidor: 'W' + agency_id
+Servidor → Cliente: 'W' + lista_ganadores O 'T' + "waiting"
+Cliente: Desconecta
+```
 
 ### 2. Modificaciones del Cliente
 
@@ -91,27 +126,70 @@ class Server:
     def __init__(self, port, listen_backlog):
         # ... socket init ...
         self._completed_agencies = set()  # Agencias que notificaron finalización
-        self._unique_agencies_ever_connected = set()  # Todas las agencias únicas que enviaron apuestas
-        self._lottery_conducted = False  # Flag de sorteo realizado
-        self._winners_cache = {}  # Cache de ganadores por agencia
         self._active_connections = set()  # Conexiones activas actualmente
+        self._lottery = Lottery()  # Sistema de lotería
 ```
 
+#### Manejo de Estados del Servidor
+```python
+def __handle_notification(self, communication_handler, agency_id):
+    """Maneja notificación de finalización de una agencia"""
+    self._completed_agencies.add(agency_id)
+    logging.info(f'action: agency_completed | result: success | agency_id: {agency_id}')
+    communication_handler.send_notification_response(True)
 
-## Caracteristicas de la Solución
+def __handle_winner_query(self, communication_handler, agency_id):
+    """Maneja consulta de ganadores de una agencia"""
+    # Verificar si todas las agencias activas han completado
+    if len(self._completed_agencies) < len(self._active_connections):
+        communication_handler.send_waiting_response()
+        return
+    
+    # Realizar sorteo si no se ha hecho
+    if not self._lottery.is_lottery_conducted():
+        self._lottery.conduct_lottery()
+    
+    # Enviar ganadores específicos de la agencia
+    winners = self._lottery.get_winners_for_agency(agency_id)
+    communication_handler.send_winner_list(winners)
+```
 
-### 1. **Cambio de sintaxis en protocolo**
-- Prefijo de tipo y tamaño para interpretación clara
-- Separación clara entre diferentes tipos de mensaje
+## Características de la Solución
+
+### 1. **Protocolo Robusto con Tipos de Mensaje**
+- **Prefijo de tipo**: Identificación clara del tipo de mensaje
+- **Prefijo de tamaño**: Manejo seguro de mensajes de cualquier longitud
+- **Separación de responsabilidades**: Cada tipo de mensaje tiene un propósito específico
+- **Manejo de errores**: Validación de tipos y tamaños de mensaje
 
 ### 2. **Tracking Dinámico de Clientes**
-- No asume un número fijo de agencias
-- Aprende dinámicamente cuántas agencias únicas existen
+- **No asume número fijo**: El servidor aprende dinámicamente cuántas agencias existen
+- **Conexiones activas**: Rastrea conexiones actualmente abiertas
+- **Agencias completadas**: Mantiene registro de qué agencias han notificado finalización
+- **Sincronización**: Solo procede con el sorteo cuando todas las agencias activas han completado
 
 ### 3. **Estrategia de Desconexión/Reconexión**
-- Permite que múltiples clientes procesen secuencialmente
-- Evita bloqueos en el servidor de procesamiento secuencial
-- Da tiempo para que otros clientes suban sus datos
+- **Procesamiento secuencial**: Permite que múltiples clientes procesen sin conflictos
+- **Liberación de recursos**: Desconecta después de enviar apuestas para liberar conexiones
+- **Reconexión inteligente**: Se reconecta solo para consultar ganadores
+- **Retry con backoff**: Implementa reintentos con delay exponencial para consultas de ganadores
+
+### 4. **Manejo de Estados del Servidor**
+- **Estado de lotería**: Controla si el sorteo ya se realizó
+- **Cache de ganadores**: Almacena ganadores agrupados por agencia
+- **Respuestas condicionales**: Responde "waiting" si no todas las agencias han completado
+- **Integridad de datos**: Solo permite consultas después de que todas las agencias hayan terminado
+
+### 5. **Robustez de Red**
+- **Manejo de partial reads/writes**: Implementa loops para garantizar transmisión completa
+- **Timeouts y reconexión**: Maneja desconexiones inesperadas
+- **Validación de mensajes**: Verifica tipos y tamaños antes de procesar
+- **Logging detallado**: Registra todas las operaciones para debugging
+
+### 6. **Seguridad y Privacidad**
+- **Ganadores por agencia**: Cada agencia solo recibe sus propios ganadores
+- **No broadcast**: Evita enviar información de otras agencias
+- **Validación de agencia**: Verifica que las consultas provengan de agencias válidas
 
 
 ## Instrucciones de Ejecución
@@ -143,15 +221,18 @@ make docker-image
 client1  | action: batch_sent | result: success | cantidad: 4
 client1  | action: notification_sent | result: success | client_id: 1
 client1  | action: waiting_for_other_clients | result: success | client_id: 1
-client1  | action: consulta_ganadores | result: success | cant_ganadores: 0
-client1  | action: documentos_recibidos | result: success | client_id: 1 | cant_documentos: 10
+client1  | action: winner_query | result: waiting | client_id: 1 | attempt: 1
+client1  | action: consulta_ganadores | result: success | cant_ganadores: 2
+client1  | action: client_shutdown | result: success | client_id: 1
 ```
 
 ### Servidor
 ```
+server   | action: new_client_connected | result: success | client_number: 172.18.0.3
+server   | action: apuesta_recibida | result: success | cantidad: 4
 server   | action: agency_completed | result: success | agency_id: 1
+server   | action: client_sent_all_bets | result: success | client_id: 172.18.0.3
 server   | action: sorteo | result: success
-server   | action: lottery_winners_found | result: success | total_winners: 3
-server   | action: winner_query | result: success | agency_id: 1 | winners_count: 0
-server   | action: documents_sent | result: success | agency_id: 1 | document_count: 10
+server   | action: winner_query | result: success | agency_id: 1 | winners_count: 2
+server   | action: winners_sent | result: success | winners_count: 2
 ```

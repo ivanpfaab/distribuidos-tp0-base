@@ -55,7 +55,6 @@ func NewClient(config ClientConfig) *Client {
 		if client.conn != nil {
 			client.conn.Close()
 		}
-		os.Exit(0)
 	}()
 
 	return client
@@ -174,7 +173,7 @@ func (c *Client) notifyCompletion() error {
 
 
 // processBatches processes data in batches from the CSV reader
-func (c *Client) processBatches(chunkReader *CSVChunkReader) {
+func (c *Client) processBatches(chunkReader *CSVChunkReader) int {
 	var currentBatch [][]string
 	
 	for chunkReader.HasMore() && c.running {
@@ -182,7 +181,7 @@ func (c *Client) processBatches(chunkReader *CSVChunkReader) {
 		chunk, err := chunkReader.ReadChunk(c.config.MaxBatchAmount) 
 		if err != nil && err != io.EOF {
 			log.Errorf("action: read_chunk | result: fail | client_id: %v | error: %v", c.config.ID, err)
-			return
+			return 1
 		}
 		
 		if err == io.EOF {
@@ -204,6 +203,8 @@ func (c *Client) processBatches(chunkReader *CSVChunkReader) {
 			time.Sleep(c.config.LoopPeriod)
 		}
 	}
+
+	return 0
 }
 
 // processBatch processes a single batch of bets
@@ -228,12 +229,12 @@ func (c *Client) processBatch(batch [][]string) error {
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+func (c *Client) StartClientLoop() int {
 
 	file, err := os.Open(c.config.FilePath)
 	if err != nil {
 		log.Errorf("action: open_file | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		return
+		return 1
 	}
 
 	defer file.Close()
@@ -241,11 +242,14 @@ func (c *Client) StartClientLoop() {
 
 	if err := c.establishConnection(); err != nil {
 		log.Errorf("action: create_socket | result: fail | client_id: %v | error: %v", c.config.ID, err)
-		return
+		return 1
 	}
 
 	// Process data in batches
-	c.processBatches(chunkReader)
+	status := c.processBatches(chunkReader)
+	if status == 1 {
+		return 1
+	}
 
 	// After all bets are sent, notify completion and disconnect
 	if c.running {
@@ -275,6 +279,8 @@ func (c *Client) StartClientLoop() {
 	c.running = false
 
 	log.Infof("action: client_shutdown | result: success | client_id: %v", c.config.ID)
+
+	return 0
 }
 
 // queryWinnersWithReconnect reconnects to the server to query for winners
