@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strconv"
 )
 
 // CommunicationHandler handles simple string-based communication with length prefixing
@@ -42,8 +43,7 @@ func ParseResponse(response string) (int, error) {
 	}
 	
 	// The response is a number in string format
-	var numericResponse int
-	_, err := fmt.Sscanf(response, "%d", &numericResponse)
+	numericResponse, err := strconv.Atoi(response)
 	if err != nil {
 		return -1, fmt.Errorf("invalid response format: %w", err)
 	}
@@ -59,16 +59,24 @@ func ParseResponse(response string) (int, error) {
 func (ch *CommunicationHandler) ReceiveMessage() (int, error) {
 	// Read response using bufio for simple line-based protocol
 	reader := bufio.NewReader(ch.conn)
-	response, err := reader.ReadString('\n')
 	
-	if err != nil {
-		return -1, fmt.Errorf("failed to receive message: %w", err)
+	var response []byte
+	for {
+		// Read one byte at a time
+		b, err := reader.ReadByte()
+		if err != nil {
+			return -1, fmt.Errorf("failed to receive message: %w", err)
+		}
+		response = append(response, b)
+		// Check if the byte is a newline
+		if b == '\n' {
+			break
+		}
 	}
 	
-	// Remove trailing newline
-	response = response[:len(response)-1]
+	responseStr := string(response[:len(response)-1])
 
-	parsedResponse, err := ParseResponse(response)
+	parsedResponse, err := ParseResponse(responseStr)
 	
 	return parsedResponse, err
 }

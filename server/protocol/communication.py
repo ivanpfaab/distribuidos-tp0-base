@@ -67,7 +67,14 @@ class CommunicationHandler:
             logging.info(f'action: apuesta_recibida | result: {execution_status} | cantidad: {stored_bets}')
             
             full_response = str(stored_bets) + "\n"
-            self.conn.send(full_response.encode('utf-8'))
+            message = full_response.encode('utf-8')
+            
+            # Send all data, handling partial sends
+            total_sent = 0
+            while total_sent < len(message):
+                sent = self.conn.send(message[total_sent:])
+                total_sent += sent
+                
         except Exception as e:
             raise Exception(f"Failed to send response: {e}")
     

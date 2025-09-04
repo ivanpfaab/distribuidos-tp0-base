@@ -14,6 +14,7 @@ import (
 )
 
 var log = logging.MustGetLogger("log")
+const MAX_BATCH_AMOUNT = 160
 
 // InitConfig Function that uses viper library to parse configuration parameters.
 // Viper is configured to read variables from both environment variables and the
@@ -116,6 +117,12 @@ func main() {
 		MaxBatchAmount: v.GetInt("batch.maxAmount"),
 	}
 
+	if v.GetInt("batch.maxAmount") > MAX_BATCH_AMOUNT {
+		log.Errorf("action: config | result: fail | batch_max_amount: %d | maximum allowed: %d", v.GetInt("batch.maxAmount"), MAX_BATCH_AMOUNT)
+		os.Exit(1)
+	}
+
 	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
+	status := client.StartClientLoop()
+	os.Exit(status)
 }
