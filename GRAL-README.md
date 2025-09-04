@@ -449,9 +449,9 @@ action: server_shutdown | result: success
 
 ## Ejercicio 6
 
-## Diseño de la Solución
+### Diseño de la Solución
 
-### Arquitectura del Sistema de Lotes
+#### Arquitectura del Sistema de Lotes
 
 ```
 ┌─────────────────┐    Batch   Protocol        ┌─────────────────┐
@@ -465,7 +465,7 @@ action: server_shutdown | result: success
 └─────────────────┘                            └─────────────────┘
 ```
 
-### Flujo de Procesamiento por batchs
+#### Flujo de Procesamiento por batchs
 
 ```
 1. Cliente lee archivo CSV de apuestas
@@ -477,9 +477,9 @@ action: server_shutdown | result: success
 7. Cliente continúa con el siguiente lote
 ```
 
-## Limitaciones de Tamaño de Paquete
+### Limitaciones de Tamaño de Paquete
 
-### Estructura del Mensaje de Batch
+#### Estructura del Mensaje de Batch
 
 El sistema utiliza un protocolo de batches con la siguiente estructura:
 
@@ -510,7 +510,7 @@ Donde:
 
 **Total por apuesta**: ~40-50 bytes
 
-### Máximo de Apuestas en 8KB
+#### Máximo de Apuestas en 8KB
 
 ```
 8KB = 8192 bytes
@@ -520,16 +520,16 @@ Donde:
 - 8184 bytes ÷ 50 bytes por apuesta (máximo) = ~163 apuestas
 ```
 
-### Recomendación Práctica
+#### Recomendación Práctica
 
 **Máximo recomendado: 160 apuestas por lote**
 
 Esta limitación asegura que el paquete permanezca bajo 8KB en todos los casos, considerando:
 - Nombres largos y variables
 - Margen de seguridad para variaciones
-- Eficiencia en el procesamiento de lotes
+- Eficiencia en el procesamiento de batchs
 
-### Configuración del Tamaño de Lote
+### Configuración del Tamaño de batch
 
 ```yaml
 # client/config.yaml
