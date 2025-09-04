@@ -68,18 +68,51 @@
 
 #### Prevención de Short Read/Write
 
-**Cliente (Go):**
+**Cliente (Go) - Envío:**
 ```go
-// Envía todo en una sola operación Write
-buffer := append([]byte{length}, []byte(msg)...)
-conn.Write(buffer)  // Atómico: todo o nada
+// Envía con loop para manejar partial writes
+writtenBytes := 0
+for writtenBytes < len(buffer) {
+    n, err := ch.conn.Write(buffer[writtenBytes:])
+    if err != nil {
+        return fmt.Errorf("failed to send message: %w", err)
+    }
+    writtenBytes += n
+}
 ```
 
-**Servidor (Python):**
+**Cliente (Go) - Recepción:**
+```go
+// Lee byte por byte hasta encontrar newline
+var response []byte
+for {
+    b, err := reader.ReadByte()
+    if err != nil {
+        return -1, fmt.Errorf("failed to receive message: %w", err)
+    }
+    response = append(response, b)
+    if b == '\n' {
+        break
+    }
+}
+```
+
+**Servidor (Python) - Envío:**
+```python
+# Envía con loop para manejar partial sends
+total_sent = 0
+while total_sent < len(message):
+    sent = self.conn.send(message[total_sent:])
+    total_sent += sent
+```
+
+**Servidor (Python) - Recepción:**
 ```python
 # Lee hasta completar basado en el prefijo de longitud
 while len(message_bytes) < length:
-    chunk = conn.recv(length - len(message_bytes))
+    chunk = self.conn.recv(length - len(message_bytes))
+    if not chunk:
+        raise ConnectionError("Connection closed by client")
     message_bytes += chunk
 ```
 
@@ -125,7 +158,27 @@ server/
 - Almacena apuesta con `store_bets([bet])`
 - Responde con número de apuesta como ACK
 
-### 4. Variables de Entorno del Cliente
+### 4. Mejoras de Robustez
+
+#### Manejo de Short Read/Write
+- **Cliente**: Implementa loops de escritura y lectura byte-por-byte para garantizar transmisión completa
+- **Servidor**: Maneja partial sends y recibe datos hasta completar el mensaje
+- **Resultado**: Sistema robusto contra condiciones de red adversas
+
+#### Optimización de Parsing
+- **Uso de `strconv.Atoi()`**: Reemplaza `fmt.Sscanf()` para conversión string-to-int más eficiente
+- **Parsing directo**: Elimina overhead de format strings y punteros
+- **Mejor rendimiento**: Conversión más rápida y código más limpio
+
+```go
+// Antes (fmt.Sscanf)
+_, err := fmt.Sscanf(response, "%d", &numericResponse)
+
+// Después (strconv.Atoi)
+numericResponse, err := strconv.Atoi(response)
+```
+
+### 5. Variables de Entorno del Cliente
 
 ```bash
 CLI_ID=1                           # ID de la agencia
@@ -142,10 +195,27 @@ CLI_BET_NUMERO=7574               # Número de la quiniela
 ```
 action: bet_created | result: success | dni: 30904465 | numero: 7574
 action: apuesta_enviada | result: success | dni: 30904465 | numero: 7574
+action: client_shutdown | result: success | client_id: 1
 ```
 
 ### Servidor
 ```
+action: accept_connections | result: success | ip: 172.18.0.3
 action: apuesta_almacenada | result: success | dni: 30904465 | numero: 7574
+action: server_shutdown | result: success
 ```
+
+## Características Técnicas
+
+### Robustez de Red
+- **Manejo de partial writes**: Garantiza envío completo de datos
+- **Manejo de partial reads**: Asegura recepción completa de mensajes
+- **Detección de desconexión**: Manejo graceful de cierres de conexión
+- **Timeouts**: Prevención de bloqueos indefinidos
+
+### Eficiencia
+- **Parsing optimizado**: Uso de `strconv` para conversiones rápidas
+- **Buffering inteligente**: `bufio.Reader` para lectura eficiente
+- **Manejo de memoria**: Reutilización de buffers y conexiones
+- **Logging estructurado**: Información detallada para debugging
 
