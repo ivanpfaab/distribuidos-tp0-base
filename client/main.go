@@ -146,5 +146,6 @@ func main() {
 	}
 
 	client := common.NewClient(clientConfig)
-	client.StartClientLoop()
+	status := client.StartClientLoop()
+	os.Exit(status)
 }

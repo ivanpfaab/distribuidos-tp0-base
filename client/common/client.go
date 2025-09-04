@@ -51,7 +51,6 @@ func NewClient(config ClientConfig) *Client {
 		if client.conn != nil {
 			client.conn.Close()
 		}
-		os.Exit(0)
 	}()
 
 	return client
@@ -115,9 +114,10 @@ func (c *Client) submitBet(bet *domain.Bet) error {
 }
 
 // StartClientLoop Send messages to the client until some time threshold is met
-func (c *Client) StartClientLoop() {
+func (c *Client) StartClientLoop() int {
 	// There is an autoincremental msgID to identify every message sent
 	// Messages if the message amount threshold has not been surpassed
+	status := 1
 	for msgID := 1; msgID <= c.config.LoopAmount && c.running; msgID++ {
 		// Check if we should shutdown before creating connection
 		if !c.running {
@@ -153,13 +153,15 @@ func (c *Client) StartClientLoop() {
 		c.conn.Close()
 		c.conn = nil
 
-		// Wait a time between sending one message and the next one
-		time.Sleep(c.config.LoopPeriod)
+		status = 0
+		break
 	}
 	
-	if c.running {
-		log.Infof("action: loop_finished | result: success | client_id: %v", c.config.ID)
+	if status == 1 {
+		log.Infof("action: loop_finished | result: fail | client_id: %v", c.config.ID)
 	} else {
 		log.Infof("action: client_shutdown | result: success | client_id: %v", c.config.ID)
 	}
+
+	return status
 }
