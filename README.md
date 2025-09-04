@@ -1,180 +1,1012 @@
 # TP0: Docker + Comunicaciones + Concurrencia
 
-En el presente repositorio se provee un esqueleto básico de cliente/servidor, en donde todas las dependencias del mismo se encuentran encapsuladas en containers. Los alumnos deberán resolver una guía de ejercicios incrementales, teniendo en cuenta las condiciones de entrega descritas al final de este enunciado.
+## Ejercicio 1: Script de Generación de Docker Compose
+### Estructura del Docker Compose Generado
 
- El cliente (Golang) y el servidor (Python) fueron desarrollados en diferentes lenguajes simplemente para mostrar cómo dos lenguajes de programación pueden convivir en el mismo proyecto con la ayuda de containers, en este caso utilizando [Docker Compose](https://docs.docker.com/compose/).
+```yaml
+name: tp0
+services:
+  server:
+    container_name: server
+    image: server:latest
+    entrypoint: python3 /main.py
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOGGING_LEVEL=DEBUG
+    networks:
+      - testing_net
 
-## Instrucciones de uso
-El repositorio cuenta con un **Makefile** que incluye distintos comandos en forma de targets. Los targets se ejecutan mediante la invocación de:  **make \<target\>**. Los target imprescindibles para iniciar y detener el sistema son **docker-compose-up** y **docker-compose-down**, siendo los restantes targets de utilidad para el proceso de depuración.
+  client1:
+    container_name: client1
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=1
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
 
-Los targets disponibles son:
+  client2:
+    container_name: client2
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=2
+      - CLI_LOG_LEVEL=DEBUG
+    networks:
+      - testing_net
+    depends_on:
+      - server
 
-| target  | accion  |
-|---|---|
-|  `docker-compose-up`  | Inicializa el ambiente de desarrollo. Construye las imágenes del cliente y el servidor, inicializa los recursos a utilizar (volúmenes, redes, etc) e inicia los propios containers. |
-| `docker-compose-down`  | Ejecuta `docker-compose stop` para detener los containers asociados al compose y luego  `docker-compose down` para destruir todos los recursos asociados al proyecto que fueron inicializados. Se recomienda ejecutar este comando al finalizar cada ejecución para evitar que el disco de la máquina host se llene de versiones de desarrollo y recursos sin liberar. |
-|  `docker-compose-logs` | Permite ver los logs actuales del proyecto. Acompañar con `grep` para lograr ver mensajes de una aplicación específica dentro del compose. |
-| `docker-image`  | Construye las imágenes a ser utilizadas tanto en el servidor como en el cliente. Este target es utilizado por **docker-compose-up**, por lo cual se lo puede utilizar para probar nuevos cambios en las imágenes antes de arrancar el proyecto. |
-| `build` | Compila la aplicación cliente para ejecución en el _host_ en lugar de en Docker. De este modo la compilación es mucho más veloz, pero requiere contar con todo el entorno de Golang y Python instalados en la máquina _host_. |
+  # ... más clientes según la cantidad especificada
 
-### Servidor
-
-Se trata de un "echo server", en donde los mensajes recibidos por el cliente se responden inmediatamente y sin alterar. 
-
-Se ejecutan en bucle las siguientes etapas:
-
-1. Servidor acepta una nueva conexión.
-2. Servidor recibe mensaje del cliente y procede a responder el mismo.
-3. Servidor desconecta al cliente.
-4. Servidor retorna al paso 1.
-
-
-### Cliente
- se conecta reiteradas veces al servidor y envía mensajes de la siguiente forma:
- 
-1. Cliente se conecta al servidor.
-2. Cliente genera mensaje incremental.
-3. Cliente envía mensaje al servidor y espera mensaje de respuesta.
-4. Servidor responde al mensaje.
-5. Servidor desconecta al cliente.
-6. Cliente verifica si aún debe enviar un mensaje y si es así, vuelve al paso 2.
-
-### Ejemplo
-
-Al ejecutar el comando `make docker-compose-up`  y luego  `make docker-compose-logs`, se observan los siguientes logs:
-
-```
-client1  | 2024-08-21 22:11:15 INFO     action: config | result: success | client_id: 1 | server_address: server:12345 | loop_amount: 5 | loop_period: 5s | log_level: DEBUG
-client1  | 2024-08-21 22:11:15 INFO     action: receive_message | result: success | client_id: 1 | msg: [CLIENT 1] Message N°1
-server   | 2024-08-21 22:11:14 DEBUG    action: config | result: success | port: 12345 | listen_backlog: 5 | logging_level: DEBUG
-server   | 2024-08-21 22:11:14 INFO     action: accept_connections | result: in_progress
-server   | 2024-08-21 22:11:15 INFO     action: accept_connections | result: success | ip: 172.25.125.3
-server   | 2024-08-21 22:11:15 INFO     action: receive_message | result: success | ip: 172.25.125.3 | msg: [CLIENT 1] Message N°1
-server   | 2024-08-21 22:11:15 INFO     action: accept_connections | result: in_progress
-server   | 2024-08-21 22:11:20 INFO     action: accept_connections | result: success | ip: 172.25.125.3
-server   | 2024-08-21 22:11:20 INFO     action: receive_message | result: success | ip: 172.25.125.3 | msg: [CLIENT 1] Message N°2
-server   | 2024-08-21 22:11:20 INFO     action: accept_connections | result: in_progress
-client1  | 2024-08-21 22:11:20 INFO     action: receive_message | result: success | client_id: 1 | msg: [CLIENT 1] Message N°2
-server   | 2024-08-21 22:11:25 INFO     action: accept_connections | result: success | ip: 172.25.125.3
-server   | 2024-08-21 22:11:25 INFO     action: receive_message | result: success | ip: 172.25.125.3 | msg: [CLIENT 1] Message N°3
-client1  | 2024-08-21 22:11:25 INFO     action: receive_message | result: success | client_id: 1 | msg: [CLIENT 1] Message N°3
-server   | 2024-08-21 22:11:25 INFO     action: accept_connections | result: in_progress
-server   | 2024-08-21 22:11:30 INFO     action: accept_connections | result: success | ip: 172.25.125.3
-server   | 2024-08-21 22:11:30 INFO     action: receive_message | result: success | ip: 172.25.125.3 | msg: [CLIENT 1] Message N°4
-server   | 2024-08-21 22:11:30 INFO     action: accept_connections | result: in_progress
-client1  | 2024-08-21 22:11:30 INFO     action: receive_message | result: success | client_id: 1 | msg: [CLIENT 1] Message N°4
-server   | 2024-08-21 22:11:35 INFO     action: accept_connections | result: success | ip: 172.25.125.3
-server   | 2024-08-21 22:11:35 INFO     action: receive_message | result: success | ip: 172.25.125.3 | msg: [CLIENT 1] Message N°5
-client1  | 2024-08-21 22:11:35 INFO     action: receive_message | result: success | client_id: 1 | msg: [CLIENT 1] Message N°5
-server   | 2024-08-21 22:11:35 INFO     action: accept_connections | result: in_progress
-client1  | 2024-08-21 22:11:40 INFO     action: loop_finished | result: success | client_id: 1
-client1 exited with code 0
+networks:
+  testing_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.125.0/24
 ```
 
+### Implementación Técnica
 
-## Parte 1: Introducción a Docker
-En esta primera parte del trabajo práctico se plantean una serie de ejercicios que sirven para introducir las herramientas básicas de Docker que se utilizarán a lo largo de la materia. El entendimiento de las mismas será crucial para el desarrollo de los próximos TPs.
+#### Generación del Archivo
 
-### Ejercicio N°1:
-Definir un script de bash `generar-compose.sh` que permita crear una definición de Docker Compose con una cantidad configurable de clientes.  El nombre de los containers deberá seguir el formato propuesto: client1, client2, client3, etc. 
+El script utiliza la técnica de concantenación de texto (`cat << EOF`) para generar el contenido del archivo:
 
-El script deberá ubicarse en la raíz del proyecto y recibirá por parámetro el nombre del archivo de salida y la cantidad de clientes esperados:
+1. **Header**: Genera la sección del servidor
+2. **Loop de Clientes**: Itera desde 1 hasta N para crear cada cliente
+3. **Networks**: Agrega la configuración de red al final
 
-`./generar-compose.sh docker-compose-dev.yaml 5`
+#### Variables de Entorno
+Cada cliente recibe:
+- `CLI_ID`: Identificador único del cliente (1, 2, 3, ...)
 
-Considerar que en el contenido del script pueden invocar un subscript de Go o Python:
+### Instrucciones de Ejecución
+
+#### 1. Verificar Permisos del Script
+
+El script debe tener permisos de ejecución:
+```bash
+chmod +x generar-compose.sh
+```
+
+#### 2. Ejecutar el Script
+
+#### Sintaxis Básica
+```bash
+./generar-compose.sh <archivo_salida> <cantidad_clientes>
+```
+
+#### Ejemplos de Uso
+
+**Generar un compose con 5 clientes:**
+```bash
+./generar-compose.sh docker-compose-5-clients.yaml 5
+```
+
+#### 3. Verificar la Salida
+
+El script mostrará mensajes de confirmación:
+```
+Generating Docker Compose file: docker-compose-5clients.yaml
+Number of clients: 5
+Docker Compose file generated successfully: docker-compose-5clients.yaml
+The file contains 1 server and 5 client(s)
+```
+
+### Validaciones y Manejo de Errores
+
+#### Errores Comunes
+
+1. **Faltan Argumentos**:
+   ```
+   Usage: ./generar-compose.sh <output_file> <number_of_clients>
+   Example: ./generar-compose.sh docker-compose-dev.yaml 5
+   ```
+
+2. **Número de Clientes Inválido**:
+   ```
+   Error: Number of clients must be a positive integer
+   ```
+
+3. **Archivo de Salida Existente**: El script sobrescribirá archivos existentes sin preguntar
+
+
+
+
+## Ejercicio N°2:
+### Diseño de la Solución
+
+#### Arquitectura de Volúmenes
+
+La solución implementa Docker volumes para crear un puente entre los archivos de configuración del host y los containers:
 
 ```
-#!/bin/bash
-echo "Nombre del archivo de salida: $1"
-echo "Cantidad de clientes: $2"
-python3 mi-generador.py $1 $2
+Host Filesystem              Container Filesystem
+├── ./server/config.ini  ←→  /config.ini
+└── ./client/config.yaml ←→  /config.yaml
 ```
 
-En el archivo de Docker Compose de salida se pueden definir volúmenes, variables de entorno y redes con libertad, pero recordar actualizar este script cuando se modifiquen tales definiciones en los sucesivos ejercicios.
+### Implementación Técnica
 
-### Ejercicio N°2:
-Modificar el cliente y el servidor para lograr que realizar cambios en el archivo de configuración no requiera reconstruír las imágenes de Docker para que los mismos sean efectivos. La configuración a través del archivo correspondiente (`config.ini` y `config.yaml`, dependiendo de la aplicación) debe ser inyectada en el container y persistida por fuera de la imagen (hint: `docker volumes`).
+#### 1. Modificación de Dockerfiles
+
+#### Server Dockerfile
+```dockerfile
+FROM python:3.9.7-slim
+COPY server /
+RUN python -m unittest tests/test_common.py
+ENTRYPOINT ["python3", "/main.py"]
+```
+
+**Cambios realizados:**
+- **Antes**: Los archivos de configuración se copiaban durante el build
+- **Después**: Los archivos se montan como volúmenes en tiempo de ejecución
+
+#### Client Dockerfile
+```dockerfile
+FROM golang:1.17 AS builder
+# ... build stage ...
+FROM busybox:latest
+COPY --from=builder /build/bin/client /client
+ENTRYPOINT ["/client"]
+```
+
+**Cambios realizados:**
+- **Antes**: `COPY ./client/config.yaml /config.yaml` (config en imagen)
+- **Después**: Config se monta como volumen desde el host
+
+#### 2. Configuración de Volúmenes en Docker Compose
+
+#### Server Service
+```yaml
+server:
+  container_name: server
+  image: server:latest
+  volumes:
+    - ./server/config.ini:/config.ini  # Monta config.ini del host
+  environment:
+    - PYTHONUNBUFFERED=1
+    - LOGGING_LEVEL=DEBUG
+  networks:
+    - testing_net
+```
+
+#### Client Service
+```yaml
+client1:
+  container_name: client1
+  image: client:latest
+  volumes:
+    - ./client/config.yaml:/config.yaml  # Monta config.yaml del host
+  environment:
+    - CLI_ID=1
+    - CLI_LOG_LEVEL=DEBUG
+  networks:
+    - testing_net
+  depends_on:
+    - server
+```
+
+#### 3. Actualización del Script Generator
+
+El script `generar-compose.sh` se actualizó para incluir volúmenes en todos los archivos generados:
+
+### Ejemplo de Modificación en Tiempo Real
+
+1. **Modificar configuración del servidor**:
+   ```ini
+   # server/config.ini
+   [DEFAULT]
+   SERVER_PORT = 12346  # Cambiado de 12345
+   LOGGING_LEVEL = DEBUG
+   ```
+
+2. **Reiniciar solo el servidor**:
+   ```bash
+   make docker-compose-restart SERVICE=server
+   ```
+
+3. **Verificar cambios**:
+   ```bash
+   make docker-compose-logs
+   ```
 
 
-### Ejercicio N°3:
-Crear un script de bash `validar-echo-server.sh` que permita verificar el correcto funcionamiento del servidor utilizando el comando `netcat` para interactuar con el mismo. Dado que el servidor es un echo server, se debe enviar un mensaje al servidor y esperar recibir el mismo mensaje enviado.
+## Ejercicio N°3:
+### Diseño de la Solución
 
-En caso de que la validación sea exitosa imprimir: `action: test_echo_server | result: success`, de lo contrario imprimir:`action: test_echo_server | result: fail`.
+### Arquitectura de la Solución
 
-El script deberá ubicarse en la raíz del proyecto. Netcat no debe ser instalado en la máquina _host_ y no se pueden exponer puertos del servidor para realizar la comunicación (hint: `docker network`). `
+La solución implementa un  **contenedor temporal** que:
+
+1. **Usa Alpine Linux como OS**
+2. **Instala netcat** dentro del contenedor temporal
+3. **Se conecta a la red Docker** existente (`tp0_testing_net`)
+4. **Ejecuta la prueba** enviando un mensaje al servidor
+5. **Captura la respuesta** y la compara con el mensaje original
+6. **Limpia automáticamente** el contenedor temporal
+
+### Implementación Técnica
+
+#### Explicación de los componentes dentro del comando que revisa el funcionamiento del servidor
+
+#### **Variable Assignment: `RESPONSE=`**
+- **Propósito**: Captura la salida del comando completo y la almacena en la variable `RESPONSE`
+
+#### **Command Substitution: `$()`**
+- **Propósito**: Ejecuta el comando dentro de los paréntesis y retorna su salida
+
+#### **Container Cleanup: `--rm`**
+- **Propósito**: Elimina automáticamente el contenedor cuando termina la ejecución
+
+#### **Network Connection: `--network tp0_testing_net`**
+- **Propósito**: Conecta el nuevo contenedor a la red Docker existente
+
+#### **Base Image: `alpine`**
+- **Propósito**: Usa Alpine Linux como imagen base (muy pequeña, ~5MB)
+
+#### **Shell Command: `sh -c`**
+- **Propósito**: Ejecuta el shell (`sh`) con la flag `-c` para ejecutar una cadena de comando. Esto es principalmente por un tema de velocidad del test
 
 
-### Ejercicio N°4:
-Modificar servidor y cliente para que ambos sistemas terminen de forma _graceful_ al recibir la signal SIGTERM. Terminar la aplicación de forma _graceful_ implica que todos los _file descriptors_ (entre los que se encuentran archivos, sockets, threads y procesos) deben cerrarse correctamente antes que el thread de la aplicación principal muera. Loguear mensajes en el cierre de cada recurso (hint: Verificar que hace el flag `-t` utilizado en el comando `docker compose down`).
+## Ejercicio N°4:
 
-## Parte 2: Repaso de Comunicaciones
+### Diseño de la Solución
 
-Las secciones de repaso del trabajo práctico plantean un caso de uso denominado **Lotería Nacional**. Para la resolución de las mismas deberá utilizarse como base el código fuente provisto en la primera parte, con las modificaciones agregadas en el ejercicio 4.
+#### Arquitectura de Shutdown Graceful
 
-### Ejercicio N°5:
-Modificar la lógica de negocio tanto de los clientes como del servidor para nuestro nuevo caso de uso.
+1. **Captura señales** (SIGTERM/SIGINT) en ambos componentes. SIGTERM es generada por docker con el flag -t, SIGINT es para capturar el Ctrl + C en desarrollo.
+2. **Se establecen flags de "running"** para coordinar la terminación y entender cuando un proceso esta corriendo y cuando se debe terminar.
+
+
+#### **Flujo de Señales**
+
+1. **Docker Compose Down**: Envía SIGTERM a todos los contenedores
+2. **Signal Handlers**: Capturan SIGTERM y establecen flags de shutdown
+3. **Main Loops**: Detectan flags y cortan el loop
+4. **Resource Cleanup**: Se ejecuta cleanup de recursos
+
+#### **Timeout y Force Kill**
+
+```bash
+# Graceful shutdown con timeout de 10 segundos
+docker compose down -t 10
+
+# Después del timeout, Docker envía SIGKILL si es necesario
+```
+
+### Probar Shutdown Graceful
+
+#### **Shutdown Normal**
+```bash
+# Iniciar servicios
+make docker-compose-up
+
+# Shutdown graceful
+make docker-compose-down
+```
+
+#### **Shutdown con Timeout**
+```bash
+# Shutdown con timeout específico
+docker compose down -t 10
+```
+
+### Logs de Shutdown
+
+#### **Servidor Graceful Shutdown**
+```
+server   | action: signal_received | result: success | signal: 15
+server   | action: server_shutdown | result: in_progress
+server   | action: cleanup_resources | result: in_progress
+server   | action: cleanup_resources | result: success | resource: server_socket
+server   | action: cleanup_resources | result: success
+server   | action: server_shutdown | result: success
+```
+
+#### **Cliente Graceful Shutdown**
+```
+client1   | action: signal_received | result: success | client_id: 1 | signal: terminated
+client1   | action: client_shutdown | result: in_progress | client_id: 1
+client1   | action: cleanup_resources | result: in_progress | client_id: 1
+client1   | action: cleanup_resources | result: success | client_id: 1 | resource: connection
+client1   | action: cleanup_resources | result: success | client_id: 1
+client1   | action: client_shutdown | result: success | client_id: 1
+```
+
+## Ejercicio 5
+
+### Diseño de la Solución
+
+#### Arquitectura del Sistema
+
+```
+┌─────────────────┐    Protocolo de Comunicación     ┌─────────────────┐
+│   Cliente       │ ←──────────────────────────────→ │   Servidor      │
+│ (Agencia)       │                                  │ (Lotería        │
+│                 │                                  │  Nacional)      │
+├─────────────────┤                                  ├─────────────────┤
+│                 │                                  │ - Protocolo     │
+│ - Protocolo     │                                  │ - Comunicación  │
+│ - Comunicación  │                                  │                 │
+└─────────────────┘                                  └─────────────────┘
+```
+
+#### Flujo de Comunicación
+
+```
+1. Cliente se conecta al servidor
+2. Cliente envía: [length][agency_id|nombre|apellido|documento|nacimiento|numero]
+3. Servidor recibe y parsea el mensaje
+4. Servidor almacena la apuesta usando store_bets()
+5. Servidor responde con el número de la apuesta como ACK
+6. Cliente recibe ACK y registra éxito
+7. Conexión se cierra
+```
+
+### Implementación Técnica
+
+#### Protocolo de Comunicación
+
+#### Estructura del Mensaje
+```
+[1 byte length][agency_id|nombre|apellido|documento|nacimiento|numero]
+```
+
+**Ejemplo de mensaje:**
+```
+[47][1|client1|Santiago Lionel|Lorca|30904465|1999-03-17|7574]
+```
+
+**Campos del mensaje:**
+- **agency_id**: Identificador de la agencia (ej: "1")
+- **nombre**: Nombre del apostador
+- **apellido**: Apellido del apostador  
+- **documento**: DNI del apostador
+- **nacimiento**: Fecha de nacimiento (YYYY-MM-DD)
+- **numero**: Número de la quiniela (4 dígitos)
+
+#### Prevención de Short Read/Write
+
+**Cliente (Go) - Envío:**
+```go
+// Envía con loop para manejar partial writes
+writtenBytes := 0
+for writtenBytes < len(buffer) {
+    n, err := ch.conn.Write(buffer[writtenBytes:])
+    if err != nil {
+        return fmt.Errorf("failed to send message: %w", err)
+    }
+    writtenBytes += n
+}
+```
+
+**Cliente (Go) - Recepción:**
+```go
+// Lee byte por byte hasta encontrar newline
+var response []byte
+for {
+    b, err := reader.ReadByte()
+    if err != nil {
+        return -1, fmt.Errorf("failed to receive message: %w", err)
+    }
+    response = append(response, b)
+    if b == '\n' {
+        break
+    }
+}
+```
+
+**Servidor (Python) - Envío:**
+```python
+# Envía con loop para manejar partial sends
+total_sent = 0
+while total_sent < len(message):
+    sent = self.conn.send(message[total_sent:])
+    total_sent += sent
+```
+
+**Servidor (Python) - Recepción:**
+```python
+# Lee hasta completar basado en el prefijo de longitud
+while len(message_bytes) < length:
+    chunk = self.conn.recv(length - len(message_bytes))
+    if not chunk:
+        raise ConnectionError("Connection closed by client")
+    message_bytes += chunk
+```
+
+#### Variables de Entorno del Cliente
+
+```bash
+CLI_ID=1                           # ID de la agencia
+CLI_BET_NOMBRE=Santiago Lionel     # Nombre del apostador
+CLI_BET_APELLIDO=Lorca            # Apellido del apostador
+CLI_BET_DOCUMENTO=30904465        # DNI del apostador
+CLI_BET_NACIMIENTO=1999-03-17    # Fecha de nacimiento
+CLI_BET_NUMERO=7574               # Número de la quiniela
+```
+
+### Logs del Sistema
 
 #### Cliente
-Emulará a una _agencia de quiniela_ que participa del proyecto. Existen 5 agencias. Deberán recibir como variables de entorno los campos que representan la apuesta de una persona: nombre, apellido, DNI, nacimiento, numero apostado (en adelante 'número'). Ej.: `NOMBRE=Santiago Lionel`, `APELLIDO=Lorca`, `DOCUMENTO=30904465`, `NACIMIENTO=1999-03-17` y `NUMERO=7574` respectivamente.
-
-Los campos deben enviarse al servidor para dejar registro de la apuesta. Al recibir la confirmación del servidor se debe imprimir por log: `action: apuesta_enviada | result: success | dni: ${DNI} | numero: ${NUMERO}`.
-
-
+```
+action: bet_created | result: success | dni: 30904465 | numero: 7574
+action: apuesta_enviada | result: success | dni: 30904465 | numero: 7574
+action: client_shutdown | result: success | client_id: 1
+```
 
 #### Servidor
-Emulará a la _central de Lotería Nacional_. Deberá recibir los campos de la cada apuesta desde los clientes y almacenar la información mediante la función `store_bet(...)` para control futuro de ganadores. La función `store_bet(...)` es provista por la cátedra y no podrá ser modificada por el alumno.
-Al persistir se debe imprimir por log: `action: apuesta_almacenada | result: success | dni: ${DNI} | numero: ${NUMERO}`.
+```
+action: accept_connections | result: success | ip: 172.18.0.3
+action: apuesta_almacenada | result: success | dni: 30904465 | numero: 7574
+action: server_shutdown | result: success
+```
 
-#### Comunicación:
-Se deberá implementar un módulo de comunicación entre el cliente y el servidor donde se maneje el envío y la recepción de los paquetes, el cual se espera que contemple:
-* Definición de un protocolo para el envío de los mensajes.
-* Serialización de los datos.
-* Correcta separación de responsabilidades entre modelo de dominio y capa de comunicación.
-* Correcto empleo de sockets, incluyendo manejo de errores y evitando los fenómenos conocidos como [_short read y short write_](https://cs61.seas.harvard.edu/site/2018/FileDescriptors/).
+## Ejercicio 6
+
+### Diseño de la Solución
+
+#### Arquitectura del Sistema de Lotes
+
+```
+┌─────────────────┐    Batch   Protocol        ┌─────────────────┐
+│   Cliente       │ ←────────────────────────→ │   Servidor      │
+│ (Agencia)       │                            │ (Lotería        │
+│                 │                            │  Nacional)      │
+├─────────────────┤                            ├─────────────────┤
+│ - CSV Reader    │                            │ - Parser de     │
+│ - Chunk Reader  │                            │  Lotes          │
+│ - Batch Sender  │                            │ - Procesador    │
+└─────────────────┘                            └─────────────────┘
+```
+
+#### Flujo de Procesamiento por batchs
+
+```
+1. Cliente lee archivo CSV de apuestas
+2. Cliente agrupa apuestas en chunks configurables
+3. Cliente envía lote completo al servidor
+4. Servidor recibe y parsea el lote completo
+5. Servidor procesa todas las apuestas del lote
+6. Servidor responde con confirmación del lote
+7. Cliente continúa con el siguiente lote
+```
+
+### Limitaciones de Tamaño de Paquete
+
+#### Estructura del Mensaje de Batch
+
+El sistema utiliza un protocolo de batches con la siguiente estructura:
+
+```
+<msg_size_8_bytes><bet1>&&<bet2>&&<bet3>&&...
+```
+
+Donde:
+- `msg_size_8_bytes`: 8 bytes para el tamaño total del contenido
+- Cada apuesta: `<agency_id>|<nombre>|<apellido>|<documento>|<nacimiento>|<numero>&&`
+- `&&`: Separador entre apuestas
+
+### Cálculo del Tamaño por Apuesta
+
+**Campos de una apuesta típica:**
+- `agency_id`: 1-2 dígitos = 1-2 bytes
+- `|`: 1 byte (separador)
+- `nombre`: ~10-15 caracteres = 10-15 bytes
+- `|`: 1 byte
+- `apellido`: ~10-15 caracteres = 10-15 bytes
+- `|`: 1 byte
+- `documento`: 8 dígitos = 8 bytes
+- `|`: 1 byte
+- `nacimiento`: YYYY-MM-DD = 10 bytes
+- `|`: 1 byte
+- `numero`: 4 dígitos = 4 bytes
+- `&&`: 2 bytes (separador de apuesta)
+
+**Total por apuesta**: ~40-50 bytes
+
+#### Máximo de Apuestas en 8KB
+
+```
+8KB = 8192 bytes
+- 8 bytes (prefijo de tamaño) = 8184 bytes disponibles
+- 8184 bytes ÷ 45 bytes por apuesta (promedio) = ~181 apuestas
+- 8184 bytes ÷ 40 bytes por apuesta (mínimo) = ~204 apuestas
+- 8184 bytes ÷ 50 bytes por apuesta (máximo) = ~163 apuestas
+```
+
+#### Recomendación Práctica
+
+**Máximo recomendado: 160 apuestas por lote**
+
+Esta limitación asegura que el paquete permanezca bajo 8KB en todos los casos, considerando:
+- Nombres largos y variables
+- Margen de seguridad para variaciones
+- Eficiencia en el procesamiento de batchs
+
+### Configuración del Tamaño de batch
+
+```yaml
+# client/config.yaml
+batch:
+  maxAmount: 160  
+```
+
+## Logs del Sistema
+
+### Cliente
+```
+action: open_file | result: success | client_id: 1
+action: read_chunk | result: success | client_id: 1 | chunk_size: 99
+action: batch_sent | result: success | cantidad: 99
+action: read_chunk | result: success | client_id: 1 | chunk_size: 99
+action: batch_sent | result: success | cantidad: 99
+action: loop_finished | result: success | client_id: 1
+```
+
+### Servidor
+```
+action: apuesta_recibida | result: success | cantidad: 99
+action: apuesta_recibida | result: success | cantidad: 99
+action: client_disconnected | result: success | detail: client finished sending data
+```
+
+## Instrucciones de Ejecución
+
+### 1. Preparar Archivos de Datos
+```bash
+# Verificar que los archivos CSV estén en .data/
+ls -la .data/agency-*.csv
+```
+
+### 2. Configurar Tamaño de Lote
+```yaml
+# Modificar client/config.yaml
+batch:
+  maxAmount: 99  # Ajustar según necesidades
+```
+
+### 3. Ejecutar Sistema
+```bash
+# Iniciar servicios
+make docker-compose-up
+
+# Ver logs
+make docker-compose-logs
+
+# Detener servicios
+make docker-compose-down
+```
+
+### 4. Verificar Funcionamiento
+```bash
+# Ver logs del cliente
+make docker-compose-logs | grep client1
+
+# Ver logs del servidor
+make docker-compose-logs | grep server
+```
+## Ejercicio 7
+
+### Arquitectura de la Solución
+
+La solución implementa un **protocolo de comunicación** que:
+
+1. **Cliente envía todas las apuestas** en batches
+2. **Cliente notifica finalización** al servidor
+3. **Cliente se desconecta** para permitir que otros clientes procesen
+4. **Cliente se reconecta** para consultar ganadores
+5. **Servidor espera** notificaciones de todas las agencias
+6. **Servidor realiza sorteo** cuando todas han completado
+7. **Servidor responde consultas** con ganadores específicos por agencia
+
+### Flujo de Comunicación
+
+```
+Cliente 1: [Bets] → [Notification] → [Disconnect] → [Reconnect] → [Winner Query] → [Winners + Documents]
+Cliente 2: [Bets] → [Notification] → [Disconnect] → [Reconnect] → [Winner Query] → [Winners + Documents]
+...
+Cliente 5: [Bets] → [Notification] → [Disconnect] → [Reconnect] → [Winner Query] → [Winners + Documents]
+Servidor: [Wait for all] → [Conduct Lottery] → [Respond Queries]
+```
+
+### Implementación Técnica
+
+### 1. Protocolo de Comunicación Mejorado
+
+#### Estructura de Mensajes
+Se implementó un protocolo robusto con prefijo de tipo y tamaño:
+
+```
+<message_type_byte><msg_size_8_bytes><message_content>
+```
+
+**Componentes:**
+- `message_type_byte`: 1 byte que identifica el tipo de mensaje
+- `msg_size_8_bytes`: 8 bytes que indican el tamaño del contenido (formato: "00000000"-"99999999")
+- `message_content`: Contenido real del mensaje (máximo 8KB)
+
+#### Tipos de Mensaje del Cliente al Servidor
+
+| Tipo | Código | Descripción | Contenido |
+|------|--------|-------------|-----------|
+| **Batch Bets** | `'B'` | Envío de apuestas en lote | `<agency_id>|<nombre>|<apellido>|<documento>|<nacimiento>|<numero>&&...` |
+| **Notification** | `'N'` | Notificación de finalización | `<agency_id>` |
+| **Winner Query** | `'W'` | Consulta de ganadores | `<agency_id>` |
+
+#### Tipos de Mensaje del Servidor al Cliente
+
+| Tipo | Código | Descripción | Contenido |
+|------|--------|-------------|-----------|
+| **Response** | `'R'` | Respuesta a batch de apuestas | `<cantidad_almacenada>` |
+| **Acknowledgment** | `'A'` | Confirmación de notificación | `"1"` (éxito) o `"0"` (fallo) |
+| **Winners** | `'W'` | Lista de ganadores | `<dni1>,<dni2>,<dni3>...` (vacío si no hay ganadores) |
+| **Waiting** | `'T'` | Servidor esperando otros clientes | `"waiting"` |
+
+### 2. Flujo de Interacción
+
+#### Fase 1: Envío de Apuestas
+```
+Cliente → Servidor: 'B' + tamaño + contenido_batch
+Servidor → Cliente: 'R' + cantidad_almacenada
+```
+
+#### Fase 2: Notificación de Finalización
+```
+Cliente → Servidor: 'N' + agency_id
+Servidor → Cliente: 'A' + "1" (confirmación)
+Cliente: Desconecta
+```
+
+#### Fase 3: Consulta de Ganadores
+```
+Cliente: Reconecta
+Cliente → Servidor: 'W' + agency_id
+Servidor → Cliente: 'W' + lista_ganadores O 'T' + "waiting"
+Cliente: Desconecta
+```
+
+### 2. Modificaciones del Cliente
+
+#### Estrategia de Desconexión/Reconexión
+```go
+// Después de enviar todas las apuestas y notificar
+if c.conn != nil {
+    c.conn.Close()
+    c.conn = nil
+}
+
+// Esperar para dar tiempo a otros clientes
+time.Sleep(c.config.LoopPeriod * 2)
+
+// Reconectar para consultar ganadores
+if c.running {
+    if err := c.queryWinnersWithReconnect(); err != nil {
+        log.Errorf("action: query_winners | result: fail | client_id: %v | error: %v", c.config.ID, err)
+    }
+}
+```
 
 
-### Ejercicio N°6:
-Modificar los clientes para que envíen varias apuestas a la vez (modalidad conocida como procesamiento por _chunks_ o _batchs_). 
-Los _batchs_ permiten que el cliente registre varias apuestas en una misma consulta, acortando tiempos de transmisión y procesamiento.
+### 3. Modificaciones del Servidor
 
-La información de cada agencia será simulada por la ingesta de su archivo numerado correspondiente, provisto por la cátedra dentro de `.data/datasets.zip`.
-Los archivos deberán ser inyectados en los containers correspondientes y persistido por fuera de la imagen (hint: `docker volumes`), manteniendo la convencion de que el cliente N utilizara el archivo de apuestas `.data/agency-{N}.csv` .
+#### Tracking Dinámico de Clientes
+```python
+class Server:
+    def __init__(self, port, listen_backlog):
+        # ... socket init ...
+        self._completed_agencies = set()  # Agencias que notificaron finalización
+        self._active_connections = set()  # Conexiones activas actualmente
+        self._lottery = Lottery()  # Sistema de lotería
+```
 
-En el servidor, si todas las apuestas del *batch* fueron procesadas correctamente, imprimir por log: `action: apuesta_recibida | result: success | cantidad: ${CANTIDAD_DE_APUESTAS}`. En caso de detectar un error con alguna de las apuestas, debe responder con un código de error a elección e imprimir: `action: apuesta_recibida | result: fail | cantidad: ${CANTIDAD_DE_APUESTAS}`.
+#### Manejo de Estados del Servidor
+```python
+def __handle_notification(self, communication_handler, agency_id):
+    """Maneja notificación de finalización de una agencia"""
+    self._completed_agencies.add(agency_id)
+    logging.info(f'action: agency_completed | result: success | agency_id: {agency_id}')
+    communication_handler.send_notification_response(True)
 
-La cantidad máxima de apuestas dentro de cada _batch_ debe ser configurable desde config.yaml. Respetar la clave `batch: maxAmount`, pero modificar el valor por defecto de modo tal que los paquetes no excedan los 8kB. 
+def __handle_winner_query(self, communication_handler, agency_id):
+    """Maneja consulta de ganadores de una agencia"""
+    # Verificar si todas las agencias activas han completado
+    if len(self._completed_agencies) < len(self._active_connections):
+        communication_handler.send_waiting_response()
+        return
+    
+    # Realizar sorteo si no se ha hecho
+    if not self._lottery.is_lottery_conducted():
+        self._lottery.conduct_lottery()
+    
+    # Enviar ganadores específicos de la agencia
+    winners = self._lottery.get_winners_for_agency(agency_id)
+    communication_handler.send_winner_list(winners)
+```
 
-Por su parte, el servidor deberá responder con éxito solamente si todas las apuestas del _batch_ fueron procesadas correctamente.
+### Características de la Solución
 
-### Ejercicio N°7:
+#### 1. **Protocolo con Tipos de Mensaje**
+- **Prefijo de tipo**: Identificación clara del tipo de mensaje
+- **Prefijo de tamaño**: Manejo seguro de mensajes de cualquier longitud
+- **Separación de responsabilidades**: Cada tipo de mensaje tiene un propósito específico
 
-Modificar los clientes para que notifiquen al servidor al finalizar con el envío de todas las apuestas y así proceder con el sorteo.
-Inmediatamente después de la notificacion, los clientes consultarán la lista de ganadores del sorteo correspondientes a su agencia.
-Una vez el cliente obtenga los resultados, deberá imprimir por log: `action: consulta_ganadores | result: success | cant_ganadores: ${CANT}`.
+#### 2. **Tracking Dinámico de Clientes**
+- **No asume número fijo**: El servidor aprende dinámicamente cuántas agencias existen
+- **Conexiones activas**: Rastrea conexiones actualmente abiertas
+- **Agencias completadas**: Mantiene registro de qué agencias han notificado finalización
+- **Sincronización**: Solo procede con el sorteo cuando todas las agencias activas han completado
 
-El servidor deberá esperar la notificación de las 5 agencias para considerar que se realizó el sorteo e imprimir por log: `action: sorteo | result: success`.
-Luego de este evento, podrá verificar cada apuesta con las funciones `load_bets(...)` y `has_won(...)` y retornar los DNI de los ganadores de la agencia en cuestión. Antes del sorteo no se podrán responder consultas por la lista de ganadores con información parcial.
+#### 3. **Estrategia de Desconexión/Reconexión**
+- **Procesamiento secuencial**: Permite que múltiples clientes procesen sin conflictos
+- **Liberación de recursos**: Desconecta después de enviar apuestas para liberar conexiones
+- **Reconexión inteligente**: Se reconecta solo para consultar ganadores
+- **Retry con backoff**: Implementa reintentos con delay exponencial para consultas de ganadores
 
-Las funciones `load_bets(...)` y `has_won(...)` son provistas por la cátedra y no podrán ser modificadas por el alumno.
+#### 4. **Manejo de Estados del Servidor**
+- **Estado de lotería**: Controla si el sorteo ya se realizó
+- **Cache de ganadores**: Almacena ganadores agrupados por agencia
+- **Respuestas condicionales**: Responde "waiting" si no todas las agencias han completado
+- **Integridad de datos**: Solo permite consultas después de que todas las agencias hayan terminado
 
-No es correcto realizar un broadcast de todos los ganadores hacia todas las agencias, se espera que se informen los DNIs ganadores que correspondan a cada una de ellas.
 
-## Parte 3: Repaso de Concurrencia
-En este ejercicio es importante considerar los mecanismos de sincronización a utilizar para el correcto funcionamiento de la persistencia.
+### Instrucciones de Ejecución
 
-### Ejercicio N°8:
+### 1. Construir y Levantar el Sistema
+```bash
+make docker-compose-up
+```
 
-Modificar el servidor para que permita aceptar conexiones y procesar mensajes en paralelo. En caso de que el alumno implemente el servidor en Python utilizando _multithreading_,  deberán tenerse en cuenta las [limitaciones propias del lenguaje](https://wiki.python.org/moin/GlobalInterpreterLock).
+### 2. Ver Logs en Tiempo Real
+```bash
+make docker-compose-logs
+```
 
-## Condiciones de Entrega
-Se espera que los alumnos realicen un _fork_ del presente repositorio para el desarrollo de los ejercicios y que aprovechen el esqueleto provisto tanto (o tan poco) como consideren necesario.
+### 3. Detener el Sistema
+```bash
+make docker-compose-down
+```
 
-Cada ejercicio deberá resolverse en una rama independiente con nombres siguiendo el formato `ej${Nro de ejercicio}`. Se permite agregar commits en cualquier órden, así como crear una rama a partir de otra, pero al momento de la entrega deberán existir 8 ramas llamadas: ej1, ej2, ..., ej7, ej8.
- (hint: verificar listado de ramas y últimos commits con `git ls-remote`)
+### 4. Reconstruir Imágenes (si es necesario)
+```bash
+make docker-image
+```
 
-Se espera que se redacte una sección del README en donde se indique cómo ejecutar cada ejercicio y se detallen los aspectos más importantes de la solución provista, como ser el protocolo de comunicación implementado (Parte 2) y los mecanismos de sincronización utilizados (Parte 3).
+### Ejemplo de Logs Esperados
 
-Se proveen [pruebas automáticas](https://github.com/7574-sistemas-distribuidos/tp0-tests) de caja negra. Se exige que la resolución de los ejercicios pase tales pruebas, o en su defecto que las discrepancias sean justificadas y discutidas con los docentes antes del día de la entrega. El incumplimiento de las pruebas es condición de desaprobación, pero su cumplimiento no es suficiente para la aprobación. Respetar las entradas de log planteadas en los ejercicios, pues son las que se chequean en cada uno de los tests.
+#### Cliente
+```
+client1  | action: batch_sent | result: success | cantidad: 4
+client1  | action: notification_sent | result: success | client_id: 1
+client1  | action: waiting_for_other_clients | result: success | client_id: 1
+client1  | action: winner_query | result: waiting | client_id: 1 | attempt: 1
+client1  | action: consulta_ganadores | result: success | cant_ganadores: 2
+client1  | action: client_shutdown | result: success | client_id: 1
+```
 
-La corrección personal tendrá en cuenta la calidad del código entregado y casos de error posibles, se manifiesten o no durante la ejecución del trabajo práctico. Se pide a los alumnos leer atentamente y **tener en cuenta** los criterios de corrección informados  [en el campus](https://campusgrado.fi.uba.ar/mod/page/view.php?id=73393).
+#### Servidor
+```
+server   | action: new_client_connected | result: success | client_number: 172.18.0.3
+server   | action: apuesta_recibida | result: success | cantidad: 4
+server   | action: agency_completed | result: success | agency_id: 1
+server   | action: client_sent_all_bets | result: success | client_id: 172.18.0.3
+server   | action: sorteo | result: success
+server   | action: winner_query | result: success | agency_id: 1 | winners_count: 2
+server   | action: winners_sent | result: success | winners_count: 2
+```
+
+## Ejercicio 8
+
+### Diseño de la Solución
+
+#### Arquitectura de Concurrencia
+
+```
+┌─────────────────┐    Múltiples Conexiones      ┌─────────────────┐
+│   Cliente 1     │ ←──────────────────────────→ │                 │
+│   Cliente 2     │ ←──────────────────────────→ │   Servidor      │
+│   Cliente 3     │ ←──────────────────────────→ │   Multithreaded │
+│   Cliente N     │ ←──────────────────────────→ │                 │
+└─────────────────┘                              └─────────────────┘
+                                                          │
+                                                          ▼
+                                                 ┌─────────────────┐
+                                                 │                 │
+                                                 │ - Thread 1      │
+                                                 │ - Thread 2      │
+                                                 │ - Thread N      │
+                                                 └─────────────────┘
+```
+
+### Modelo de Threading
+
+```
+Main Thread (Accept Loop)
+    ├── Thread 1 (Client 1)
+    ├── Thread 2 (Client 2)
+    ├── Thread 3 (Client 3)
+    └── Thread N (Client N)
+```
+
+## Implementación Técnica
+
+### 1. Sistema de Locks Thread-Safe
+
+#### Definición de Locks
+```python
+class Server:
+    def __init__(self, port, listen_backlog):
+        # Thread-safe locks for shared resources
+        self._completion_lock = threading.Lock()    # Protege _completed_agencies
+        self._lottery_lock = threading.Lock()       # Protege operaciones de lotería
+        self._storage_lock = threading.Lock()       # Protege almacenamiento de apuestas
+        self._connections_lock = threading.Lock()   # Protege _active_connections
+        self._threads_lock = threading.Lock()       # Protege _active_threads
+```
+
+#### Uso de Locks en Operaciones Críticas
+
+**Almacenamiento de Apuestas (Thread-Safe):**
+```python
+def __handle_batch_bets(self, communication_handler, bets):
+    try:
+        bets_stored = 0
+        
+        # Proteger el almacenamiento con lock
+        with self._storage_lock:
+            for bet in bets:
+                if bet:
+                    store_bets([bet])  # Operación crítica
+                    bets_stored += 1
+        
+        communication_handler.send_batch_response(len(bets), bets_stored)
+    except Exception as e:
+        logging.error(f'action: handle_batch_bets | result: fail | error: {e}')
+```
+
+**Manejo de Notificaciones (Thread-Safe):**
+```python
+def __handle_notification(self, communication_handler, agency_id):
+    try:
+        # Proteger acceso a _completed_agencies
+        with self._completion_lock:
+            self._completed_agencies.add(agency_id)
+            logging.info(f'action: agency_completed | result: success | agency_id: {agency_id}')
+        
+        communication_handler.send_notification_response(True)
+    except Exception as e:
+        logging.error(f'action: handle_notification | result: fail | agency_id: {agency_id} | error: {e}')
+```
+
+**Consulta de Ganadores (Thread-Safe):**
+```python
+def __handle_winner_query(self, communication_handler, agency_id):
+    try:
+        # Verificar estado de manera thread-safe
+        with self._completion_lock:
+            completed_count = len(self._completed_agencies)
+        with self._connections_lock:
+            active_count = len(self._active_connections)
+        
+        if completed_count < active_count:
+            communication_handler.send_waiting_response()
+            return
+        
+        # Proteger operación de lotería
+        with self._lottery_lock:
+            if not self._lottery.is_lottery_conducted():
+                self._lottery.conduct_lottery()
+        
+        winners = self._lottery.get_winners_for_agency(agency_id)
+        communication_handler.send_winner_list(winners)
+    except Exception as e:
+        logging.error(f'action: handle_winner_query | result: fail | agency_id: {agency_id} | error: {e}')
+```
+
+### 2. Creación y Gestión de Threads
+
+#### Creación de Threads por Cliente
+```python
+def run(self):
+    """Main server loop that accepts connections and creates a thread for each"""
+    logging.info('action: server_start | result: success')
+    
+    try:
+        while self._running:
+            try:
+                client_sock = self.__accept_new_connection()
+                if client_sock:
+                    # Crear thread dedicado para cada cliente
+                    client_thread = threading.Thread(
+                        target=self.__handle_client_connection, 
+                        args=(client_sock,),
+                        daemon=False,  # Non-daemon para poder esperar
+                    )
+                    
+                    # Registrar thread para shutdown graceful
+                    with self._threads_lock:
+                        self._active_threads.add(client_thread)
+                    
+                    client_thread.start()
+                    
+            except socket.timeout:
+                continue
+            except Exception as e:
+                logging.error(f"action: accept_connection | result: fail | error: {e}")
+                continue
+    finally:
+        self.__cleanup_resources()
+```
+
+#### Gestión de Conexiones Thread-Safe
+```python
+def __accept_new_connection(self):
+    """Accept new connections and track them thread-safely"""
+    logging.info('action: accept_connections | result: in_progress')
+    c, addr = self._server_socket.accept()
+    logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
+    
+    # Registrar conexión de manera thread-safe
+    with self._connections_lock:
+        self._active_connections.add(c)
+    
+    return c
+```
+
+
+### Flujo de Ejecución Concurrente
+
+#### Timeline de Threads
+```
+T0: Main Thread inicia, acepta conexiones
+T1: Cliente 1 conecta → Thread 1 creado
+T2: Cliente 2 conecta → Thread 2 creado
+T3: Cliente 3 conecta → Thread 3 creado
+T4: Thread 1 procesa apuestas de Cliente 1
+T5: Thread 2 procesa apuestas de Cliente 2 (paralelo)
+T6: Thread 3 procesa apuestas de Cliente 3 (paralelo)
+T7: Thread 1 notifica finalización
+T8: Thread 2 notifica finalización
+T9: Thread 3 notifica finalización
+T10: Thread 1 consulta ganadores
+T11: Thread 2 consulta ganadores (paralelo)
+T12: Thread 3 consulta ganadores (paralelo)
+T13: Shutdown → Todos los threads terminan
+```
+
+#### Estados de Sincronización
+```
+Estado Inicial: Main Thread esperando conexiones
+Estado Procesando: Múltiples threads procesando clientes
+Estado Sincronización: Locks protegiendo recursos compartidos
+Estado Lotería: Un solo thread puede ejecutar lotería
+Estado Consultas: Múltiples threads consultando ganadores
+Estado Shutdown: Todos los threads terminando ordenadamente
+```
+
+## Logs del Sistema Concurrente
+
+### Servidor
+```
+server   | action: server_start | result: success
+server   | action: accept_connections | result: success | ip: 172.18.0.3
+server   | action: new_client_connected | result: success | client_number: 172.18.0.3
+server   | action: accept_connections | result: success | ip: 172.18.0.4
+server   | action: new_client_connected | result: success | client_number: 172.18.0.4
+server   | action: apuesta_recibida | result: success | cantidad: 4
+server   | action: apuesta_recibida | result: success | cantidad: 3
+server   | action: agency_completed | result: success | agency_id: 1
+server   | action: agency_completed | result: success | agency_id: 2
+server   | action: sorteo | result: success
+server   | action: winner_query | result: success | agency_id: 1 | winners_count: 2
+server   | action: winner_query | result: success | agency_id: 2 | winners_count: 1
+server   | action: cleanup_resources | result: waiting_for_threads | active: 2
+server   | action: cleanup_resources | result: thread_finished | thread: Thread-1
+server   | action: cleanup_resources | result: thread_finished | thread: Thread-2
+server   | action: server_shutdown | result: success
+```
