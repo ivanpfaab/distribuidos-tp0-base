@@ -7,6 +7,9 @@ MESSAGE_TYPE_ACKNOWLEDGMENT = 'A'  # Acknowledgment for notifications
 MESSAGE_TYPE_WINNERS = 'W'         # Winner list response
 MESSAGE_TYPE_WAITING = 'T'         # Waiting for other clients to complete
 
+MESSAGE_SIZE_SIZE = 8
+MESSAGE_TYPE_SIZE = 1
+
 class CommunicationHandler:
     """Server-side communication handler with new protocol format"""
     
@@ -17,7 +20,7 @@ class CommunicationHandler:
         """Receive a message with new protocol format: <type><size><content>"""
         try:
             # First read the message type (1 byte)
-            type_byte = self.conn.recv(1)
+            type_byte = self.conn.recv(MESSAGE_TYPE_SIZE)
             if not type_byte:
                 raise ConnectionResetError("Connection closed by client or incomplete type")
             
@@ -25,9 +28,10 @@ class CommunicationHandler:
             logging.debug(f"Received message type: {message_type}")
             
             # Then read the message size (8 characters for 8-digit length)
-            size_bytes = self.conn.recv(8)
-            if not size_bytes or len(size_bytes) < 8:
-                raise ConnectionResetError("Connection closed by client or incomplete size")
+            size_bytes = b''
+            while len(size_bytes) < MESSAGE_SIZE_SIZE:
+                chunk = self.conn.recv(MESSAGE_SIZE_SIZE - len(size_bytes))
+                size_bytes += chunk
             
             total_size = int(size_bytes.decode('utf-8'))
             logging.debug(f"Message content size: {total_size} bytes")
@@ -97,7 +101,10 @@ class CommunicationHandler:
     def _send_message(self, msg_type, content):
         """Send a message using the protocol format: <type><size><content>"""
         try:
+            # Calculate the size of the content to format the message.
             size_str = f"{len(content):08d}"
+
+            # Build the full message.
             full_message = msg_type + size_str + content
             message_bytes = full_message.encode('utf-8')
             
