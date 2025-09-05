@@ -230,12 +230,9 @@ class Server:
                     client_sock = self.__accept_new_connection()
                     if client_sock:
                         self.__handle_client_connection(client_sock)
-                except socket.timeout:
-                    continue
+                        
                 except Exception as e:
-                    # Client disconnected
-                    logging.info(f"action: client_disconnected | result: success | detail: client finished sending data")
-                    break
+                    logging.info(f"action: accept_connection | result: waiting")
         finally:
             logging.info('action: server_shutdown | result: in_progress')
             self.__cleanup_resources()
