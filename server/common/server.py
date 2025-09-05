@@ -280,8 +280,8 @@ class Server:
                         client_thread.start()
                         
                 except Exception as e:
-                    # Log error but continue accepting connections
-                    logging.info(f"action: accept_connection | result: waiting")
+                    # continue accepting connections
+                    logging.info(f"waiting...")
                     continue
                     
         finally:
