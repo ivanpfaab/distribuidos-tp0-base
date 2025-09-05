@@ -271,7 +271,7 @@ func (c *Client) StartClientLoop() int {
 
 	// Now reconnect to query for winners
 	if c.running {
-		if err := c.queryWinnersWithReconnect(); err != nil {
+		if err := c.queryWinners(); err != nil {
 			log.Errorf("action: query_winners | result: fail | client_id: %v | error: %v", c.config.ID, err)
 		}
 	}
@@ -283,29 +283,13 @@ func (c *Client) StartClientLoop() int {
 	return 0
 }
 
-// queryWinnersWithReconnect reconnects to the server to query for winners
-func (c *Client) queryWinnersWithReconnect() error {
-	// Create a new connection for winner query
+// queryWinners queries the server for winners from this agency
+func (c *Client) queryWinners() error {
+	
 	if err := c.createClientSocket(); err != nil {
 		return fmt.Errorf("failed to reconnect for winner query: %w", err)
 	}
 
-	// Query for winners from this agency
-	if err := c.queryWinners(); err != nil {
-		return fmt.Errorf("failed to query winners: %w", err)
-	}
-
-	// Close the connection after getting winners
-	if c.conn != nil {
-		c.conn.Close()
-		c.conn = nil
-	}
-
-	return nil
-}
-
-// queryWinners queries the server for winners from this agency
-func (c *Client) queryWinners() error {
 	commHandler := protocol.NewCommunicationHandler(c.conn)
 	
 	agencyID, err := strconv.Atoi(c.config.ID)
@@ -338,8 +322,12 @@ func (c *Client) queryWinners() error {
 		// Successfully received winners
 		log.Infof("action: consulta_ganadores | result: success | cant_ganadores: %d", len(winners))
 		gotWinners = true
-		return nil
 	}
-	
-	return fmt.Errorf("max retries exceeded while waiting for server to be ready")
+
+	if c.conn != nil {
+		c.conn.Close()
+		c.conn = nil
+	}
+
+	return nil
 }

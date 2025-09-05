@@ -164,7 +164,7 @@ func (ch *CommunicationHandler) Read() (byte, string, error) {
 	}
 	msgType := typeBuffer[0]
 	
-	// Then read the message size (8 characters for 8-digit length)
+	// Then read the message size 8 bytes
 	sizeBuffer := make([]byte, MessageSizeSize)
 	readBytes = 0
 	for readBytes < MessageSizeSize {
@@ -175,6 +175,7 @@ func (ch *CommunicationHandler) Read() (byte, string, error) {
 		readBytes += n
 	}
 	
+	// Parse the message size
 	totalSize, err := strconv.Atoi(string(sizeBuffer))
 	if err != nil {
 		return 0, "", fmt.Errorf("failed to parse message size: %w", err)
