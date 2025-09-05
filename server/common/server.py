@@ -239,9 +239,6 @@ class Server:
         Function blocks until a connection to a client is made.
         Then connection created is printed and returned
         """
-
-        # Connection arrived
-        logging.info('action: accept_connections | result: in_progress')
         c, addr = self._server_socket.accept()
         logging.info(f'action: accept_connections | result: success | ip: {addr[0]}')
         
@@ -282,11 +279,9 @@ class Server:
                         
                         client_thread.start()
                         
-                except socket.timeout:
-                    continue
                 except Exception as e:
                     # Log error but continue accepting connections
-                    logging.error(f"action: accept_connection | result: fail | error: {e}")
+                    logging.info(f"action: accept_connection | result: waiting")
                     continue
                     
         finally:
